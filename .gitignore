@@ -37,3 +37,19 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# MC 
+
+maps/
+
+figures/
+
+data/archive/
+
+data/spatial/
+
+code/.ipynb_checkpoints/
+
+*.DS_Store
+
+Data/spatial/raw/burndate/
