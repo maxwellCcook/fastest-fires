@@ -5,7 +5,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# source("../funs.R")
+# source("funs.R")
 
 library(tidyverse)
 library(sf)
@@ -24,21 +24,54 @@ firedir = paste0(mdir,"FIRED/data/")
 ics209 <- st_read(paste0(icsdir,"spatial/raw/wf-incidents/ics-209-plus-2.0/ics209plus-wf_incidents_spatial_us_1999to2020.gpkg"))
 fired <- st_read(paste0(firedir,"spatial/raw/events/conus-ak_to2022_events_wgs.gpkg"))
 ics.fired <- st_read(paste0(icsdir,"spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg"))
-
 conus <- st_read(paste0(mdir,"data/boundaries/political/TIGER/tl19_us_states_conus.gpkg"))
 
 ```
 
-Summary of Fast Fire impacts from the ICS-209-PLUS (1999-2020).
+Summary of Fast Fire impacts from the ICS-209-PLUS (1999-2020). First, we need to handle possible multiple entries due to the reporting nature for complex fires.
+
+```{r}
+
+# Subset to CONUS fires
+stusps <- conus$STUSPS
+ics209 <- ics209 %>% filter(STUSPS %in% stusps)
+
+# Load the complex associations table
+complex <- read_csv(
+ paste0(icsdir,
+        "tabular/raw/wf-incidents/ics209-plus_v2.0/ics209plus-wildfire/ics209-plus-wf_complex_associations_1999to2020.csv"))
+
+# Isolate non-complex fires
+no.cmplx <- ics209 %>% 
+ # Remove some known "problem fires"
+ filter(INCIDENT_ID != "2017_7211255_REDWOOD VALLEY INCIDENT",
+        INCIDENT_ID != "2017_7293073_REDWOOD VALLEY INCIDENT") %>%
+ # Filter incidents with 0 acres
+ filter(FINAL_ACRES!=0,
+        # remove incidents found in the complex associations table
+        !INCIDENT_ID %in% complex$MEMBER_INCIDENT_ID,
+        # filter to fires where FPA-FOD shows 1 event or NULL
+        FOD_FIRE_NUM==1 | is.na(FOD_FIRE_NUM))
+
+# Isolate complex fires
+cmplx <- ics209 %>%
+ filter(INCIDENT_ID %in% complex$CPLX_INCIDENT_ID)
+
+# bind to a temporary layer
+ics209.clean <- bind_rows(no.cmplx,cmplx)
+
+# check the remaining fires
+dim(ics209 %>% filter(! INCIDENT_ID %in% ics209.clean$INCIDENT_ID))
+dim(temp %>% filter(INCIDENT_ID %in% complex$MEMBER_INCIDENT_ID | INCIDENT_ID %in% complex$CPLX_INCIDENT_ID))
+
+rm(no.cmplx,cmplx,complex)
+
+```
 
 ```{r}
 
 # Observed fast fires break and number of homes threatened, damaged, destroyed
-# incidents.fast <- incidents %>% 
-#  mutate(WF_MAX_FSR_HA = WF_MAX_FSR*0.404686) %>% 
-#  filter(WF_MAX_FSR_HA >= 1620) %>%
-#  filter(START_YEAR >= 2000)
-incidents.fast <- ics209 %>% 
+ics.fast <- ics209.clean %>% 
  mutate(WF_MAX_FSR_HA = WF_MAX_FSR*0.404686) %>% 
  filter(WF_MAX_FSR_HA >= 1620) %>%
  filter(START_YEAR >= 2000)
@@ -46,25 +79,25 @@ incidents.fast <- ics209 %>%
 # Summarize number of threatened, damaged, destroyed structures by fast fires from the 209s
 print("ICS-209-PLUS 1999-2020 Fast Fires, Structural Impacts: ")
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-paste("Total Structures Threatened: ", scales::comma(sum(incidents.fast$STR_THREATENED_MAX, na.rm=TRUE)), sep="")
-paste("Total Structures Damaged: ", scales::comma(sum(incidents.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)), sep="")
-paste("Total Structures Destroyed: ", scales::comma(sum(incidents.fast$STR_DESTROYED_TOTAL, na.rm=TRUE)), sep="")
-paste("Total Residential Structures Destroyed: ", scales::comma(sum(incidents.fast$STR_DESTROYED_RES_TOTAL, na.rm=TRUE)), sep="")
+paste("Total Structures Threatened: ", scales::comma(sum(ics.fast$STR_THREATENED_MAX, na.rm=TRUE)), sep="")
+paste("Total Structures Damaged: ", scales::comma(sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)), sep="")
+paste("Total Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=TRUE)), sep="")
+paste("Total Residential Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=TRUE)), sep="")
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 # Percent of homes threatened, damaged, destroyed
 paste("Percent of Structures Threatened: ",
-      sum(incidents.fast$STR_THREATENED_MAX, na.rm=T)/sum(ics209$STR_THREATENED_MAX, na.rm=T)*100,sep="")
+      sum(ics.fast$STR_THREATENED_MAX, na.rm=T)/sum(ics209$STR_THREATENED_MAX, na.rm=T)*100,sep="")
 paste("Percent of Structures Damaged: ", 
-      sum(incidents.fast$STR_DAMAGED_TOTAL, na.rm=T)/sum(ics209$STR_DAMAGED_TOTAL, na.rm=T)*100,sep="")
+      sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=T)/sum(ics209$STR_DAMAGED_TOTAL, na.rm=T)*100,sep="")
 paste("Percent of Structures Destroyed: ", 
-      sum(incidents.fast$STR_DESTROYED_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_TOTAL, na.rm=T)*100,sep="")
+      sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_TOTAL, na.rm=T)*100,sep="")
 paste("Percent of Residential Structures Destroyed: ", 
-      sum(incidents.fast$STR_DESTROYED_RES_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_RES_TOTAL, na.rm=T)*100,sep="")
+      sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_RES_TOTAL, na.rm=T)*100,sep="")
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 paste("Total Suppression Costs: ",
-      scales::comma(sum(incidents.fast$PROJECTED_FINAL_IM_COST, na.rm=T)), sep="")
+      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)), sep="")
 paste("Percent of Suppression Costs: ",
-      scales::comma(sum(incidents.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/sum(ics209$PROJECTED_FINAL_IM_COST, na.rm=T)*100), sep="")
+      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/sum(ics209$PROJECTED_FINAL_IM_COST, na.rm=T)*100), sep="")
 
 ```
 
@@ -167,7 +200,7 @@ Identify top three fastest, most destructive fires.
 
 ```{r}
 
-tmp <- top_n(incidents.fast,100,WF_MAX_FSR_HA)
+tmp <- top_n(ics.fast,100,WF_MAX_FSR_HA)
 
 most.dest <- top_n(ics.fired.t100, 25, STR_DESTROYED_RES_TOTAL) %>%
  dplyr::select(INCIDENT_NAME,ig_year,STUSPS,STR_DESTROYED_RES_TOTAL)
