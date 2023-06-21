@@ -6,26 +6,36 @@ library(mblm)
 
 getwd()
 
-# # Read in western states
-# west <- st_read('../../data/boundaries/political/TIGER/tl19_us_states_west_nad83.gpkg') %>%
-#  dplyr::select(STUSPS,geom)
-# 
-# # Read in FIRED
-# fired <- st_read('../../FIRED/data/spatial/mod/fired_events_conus_to2021091.gpkg') %>%
-#  filter(ig_year <= 2020,
-#         lc_name != "Croplands",
-#         lc_name != "Water Bodies") %>%
-#  # Join to states
-#  st_join(west,largest=TRUE) %>%
-#  filter(!is.na(STUSPS)) # keep western states
-# glimpse(fired)
-# 
-# # Export as a table without geometry
-# fired %>% st_set_geometry(NULL) %>% as_tibble() %>% 
-#  dplyr::select(id,ig_date,ig_year,event_dur,fsr_km2_dy,mx_grw_km2) %>%
-#  write_csv('data/fired_nocrops_west.csv')
-# 
-# rm(fired,west)
+# Read in western states
+west <- st_read('../../data/boundaries/political/TIGER/tl19_us_states_west_nad83.gpkg') %>%
+ dplyr::select(STUSPS,geom)
+
+# Read in ecoregions (Level 1)
+ecol1 <- st_read('../../data/boundaries/ecological/ecoregion/na_cec_eco_l1.gpkg') %>%
+ dplyr::select(NA_L1CODE,NA_L1NAME,geom) %>%
+ st_join(west,join=st_intersects) %>%
+ filter(!is.na(STUSPS))
+glimpse(ecol1)
+
+# Read in FIRED
+fired <- st_read('../../FIRED/data/spatial/mod/fired_events_conus_to2021091.gpkg') %>%
+ filter(ig_year <= 2020,
+        lc_name != "Croplands",
+        lc_name != "Water Bodies") %>%
+ # Join to states
+ st_join(west,largest=TRUE) %>%
+ filter(!is.na(STUSPS)) %>% # keep western states
+ # Join to ecoregion
+ st_join(ecol1,)
+glimpse(fired)
+
+# Export as a table without geometry
+fired %>% st_set_geometry(NULL) %>% as_tibble() %>%
+ dplyr::select(id,ig_date,ig_year,event_dur,fsr_km2_dy,mx_grw_km2) %>%
+ write_csv('data/fired_nocrops_west.csv')
+
+rm(fired,west)
+
 
 # Sys.setenv(
 #   "AWS_ACCESS_KEY_ID" = "",
@@ -37,7 +47,7 @@ getwd()
 # Read back in the csv
 # clear memory
 
-fire_nocrops <- read.csv('data/fired_nocrops_west.csv')
+fire_nocrops <- read.csv('data/tabular/fired_nocrops_west.csv')
 
 ggplot(data=fire_nocrops)+geom_histogram(aes(x=mx_grw_km2))
 
@@ -72,6 +82,10 @@ m <- as.data.frame(summary(a)$coefficients)
 m
 
 rm(by.year,a,m)
+
+### Run by summarized Level-1
+
+
 
 ###################################################################
 
