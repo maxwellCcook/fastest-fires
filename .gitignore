@@ -42,14 +42,12 @@ vignettes/*.pdf
 
 maps/
 
-figures/
-
 data/archive/
 
 data/spatial/
 
+# File types and extensions
 code/.ipynb_checkpoints/
-
 *.DS_Store
-
-Data/spatial/raw/burndate/
+*.idea/*
+*.qmd

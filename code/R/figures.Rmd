@@ -1,48 +1,23 @@
 ---
-title: "fast-fires-explore"
+title: "fast-fires"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# source("funs.R")
-
-library(tidyverse)
-library(sf)
-library(raster)
-
+source("setup.R")
 ```
 
-Load in the data: ICS-209-PLUS, FIRED, and boundary data.
+Summary of Fast Fire impacts from the ICS-209-PLUS (1999-2020). 
+
+First, we need to handle possible multiple entries due to the reporting nature for complex fires.
 
 ```{r include=F}
-
-mdir = "/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/"
-icsdir = paste0(mdir,"ics209-plus-fired/data/")
-firedir = paste0(mdir,"FIRED/data/")
-
-ics209 <- st_read(paste0(icsdir,"spatial/raw/wf-incidents/ics-209-plus-2.0/ics209plus-wf_incidents_spatial_us_1999to2020.gpkg"))
-fired <- st_read(paste0(firedir,"spatial/raw/events/conus-ak_to2022_events_wgs.gpkg"))
-ics.fired <- st_read(paste0(icsdir,"spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg"))
-conus <- st_read(paste0(mdir,"data/boundaries/political/TIGER/tl19_us_states_conus.gpkg"))
-
-```
-
-Summary of Fast Fire impacts from the ICS-209-PLUS (1999-2020). First, we need to handle possible multiple entries due to the reporting nature for complex fires.
-
-```{r}
-
-# Subset to CONUS fires
-stusps <- conus$STUSPS
-ics209 <- ics209 %>% filter(STUSPS %in% stusps)
-
 # Load the complex associations table
-complex <- read_csv(
- paste0(icsdir,
-        "tabular/raw/wf-incidents/ics209-plus_v2.0/ics209plus-wildfire/ics209-plus-wf_complex_associations_1999to2020.csv"))
-
+complex <- read_csv(paste0(icsdir,"/data/tabular/raw/wf-incidents/ics-plus_v2.0/
+                           icsplus-wildfire/ics-plus-wf_complex_associations_1999to2020.csv"))
 # Isolate non-complex fires
-no.cmplx <- ics209 %>% 
+no.cmplx <- ics %>% 
  # Remove some known "problem fires"
  filter(INCIDENT_ID != "2017_7211255_REDWOOD VALLEY INCIDENT",
         INCIDENT_ID != "2017_7293073_REDWOOD VALLEY INCIDENT") %>%
@@ -52,26 +27,19 @@ no.cmplx <- ics209 %>%
         !INCIDENT_ID %in% complex$MEMBER_INCIDENT_ID,
         # filter to fires where FPA-FOD shows 1 event or NULL
         FOD_FIRE_NUM==1 | is.na(FOD_FIRE_NUM))
-
 # Isolate complex fires
-cmplx <- ics209 %>%
+cmplx <- ics %>%
  filter(INCIDENT_ID %in% complex$CPLX_INCIDENT_ID)
-
 # bind to a temporary layer
-ics209.clean <- bind_rows(no.cmplx,cmplx)
-
-# check the remaining fires
-dim(ics209 %>% filter(! INCIDENT_ID %in% ics209.clean$INCIDENT_ID))
-dim(temp %>% filter(INCIDENT_ID %in% complex$MEMBER_INCIDENT_ID | INCIDENT_ID %in% complex$CPLX_INCIDENT_ID))
-
+ics <- bind_rows(no.cmplx,cmplx)
 rm(no.cmplx,cmplx,complex)
-
 ```
 
-```{r}
+Summary statistics from the ICS209-PLUS:
 
+```{r}
 # Observed fast fires break and number of homes threatened, damaged, destroyed
-ics.fast <- ics209.clean %>% 
+ics.fast <- ics %>% 
  mutate(WF_MAX_FSR_HA = WF_MAX_FSR*0.404686) %>% 
  filter(WF_MAX_FSR_HA >= 1620) %>%
  filter(START_YEAR >= 2000)
@@ -79,137 +47,223 @@ ics.fast <- ics209.clean %>%
 # Summarize number of threatened, damaged, destroyed structures by fast fires from the 209s
 print("ICS-209-PLUS 1999-2020 Fast Fires, Structural Impacts: ")
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-paste("Total Structures Threatened: ", scales::comma(sum(ics.fast$STR_THREATENED_MAX, na.rm=TRUE)), sep="")
-paste("Total Structures Damaged: ", scales::comma(sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)), sep="")
-paste("Total Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=TRUE)), sep="")
-paste("Total Residential Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=TRUE)), sep="")
+paste0("Total Structures Threatened: ", scales::comma(sum(ics.fast$STR_THREATENED_MAX, na.rm=TRUE)))
+paste0("Total Structures Damaged: ", scales::comma(sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)))
+paste0("Total Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=TRUE)))
+paste0("Total Residential Structures Destroyed: ",scales::comma(sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=TRUE)))
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 # Percent of homes threatened, damaged, destroyed
-paste("Percent of Structures Threatened: ",
-      sum(ics.fast$STR_THREATENED_MAX, na.rm=T)/sum(ics209$STR_THREATENED_MAX, na.rm=T)*100,sep="")
-paste("Percent of Structures Damaged: ", 
-      sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=T)/sum(ics209$STR_DAMAGED_TOTAL, na.rm=T)*100,sep="")
-paste("Percent of Structures Destroyed: ", 
-      sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_TOTAL, na.rm=T)*100,sep="")
-paste("Percent of Residential Structures Destroyed: ", 
-      sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=T)/sum(ics209$STR_DESTROYED_RES_TOTAL, na.rm=T)*100,sep="")
+paste0("Percent of Structures Threatened: ",
+      sum(ics.fast$STR_THREATENED_MAX, na.rm=T)/sum(ics$STR_THREATENED_MAX, na.rm=T)*100)
+paste0("Percent of Structures Damaged: ", 
+      sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=T)/sum(ics$STR_DAMAGED_TOTAL, na.rm=T)*100)
+paste0("Percent of Structures Destroyed: ", 
+      sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=T)/sum(ics$STR_DESTROYED_TOTAL, na.rm=T)*100)
+paste0("Percent of Residential Structures Destroyed: ", 
+      sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=T)/sum(ics$STR_DESTROYED_RES_TOTAL, na.rm=T)*100)
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-paste("Total Suppression Costs: ",
-      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)), sep="")
-paste("Percent of Suppression Costs: ",
-      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/sum(ics209$PROJECTED_FINAL_IM_COST, na.rm=T)*100), sep="")
-
+paste0("Total Suppression Costs: ",scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)))
+paste0("Percent of Suppression Costs: ",
+      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/
+                     sum(ics$PROJECTED_FINAL_IM_COST, na.rm=T)*100))
+# Write out
+st_write(ics.fast, "../../data/spatial/mod/ics209plus_conus_fast_2000to2020.gpkg", delete_dsn=T)
 ```
 
 Subset FIRED events to fast fires (max daily growth > 1620ha). Exclude cropland systems.
 
 ```{r warning=F}
 
+bupr <- read_csv("../../data/tabular/bupr_sums.csv") %>%
+ dplyr::select(id,bupr_sum,bupr_sum1km,bupr_sum4km)
+
 # Remove fired that occurred predominantly in cropland landcover
 fired.fast <- fired %>% 
- # filter(lc_name != "Croplands") %>% 
+ dplyr::select(-c(bupr_sum,bupr_sum1k)) %>%
+ filter(lc_name != "Croplands") %>%
  mutate(mx_grw_ha = mx_grw_km2*100) %>% 
- filter(mx_grw_ha >= 1620)
+ filter(mx_grw_ha >= 1620) %>%
+ st_transform(st_crs(lambert.prj)) %>%
+ # Join to BUPR summary
+ left_join(bupr, by="id")
 
 # Get the top 100 fastest fires in FIRED
 fired.t100 <- top_n(fired.fast, 100, mx_grw_ha)
-
 # Get the top 100 fastest fires in ICS-FIRED
-ics.fired.t100 <- top_n(ics.fired %>% filter(FIRED_ID %in% fired.fast$id), 100, mx_grw_km2) %>% 
-   mutate(mx_grw_ha = mx_grw_km2*100,
-          tot_ar_ha = tot_ar_km2*100) %>% 
-   filter(mx_grw_ha >= 1620)
-
-# Arrange by multiple columns
-# df <- ics.fired %>% arrange(desc(mx_grw_km2), desc(STR_DESTROYED_TOTAL), desc(bupr_sum))
+ics.fired.t100 <- ics.fired %>%
+ mutate(mx_grw_ha = mx_grw_km2*100,
+        tot_ar_ha = tot_ar_km2*100) %>%
+ filter(mx_grw_ha >= 1620) %>%
+ top_n(., 100, mx_grw_ha) %>%
+ st_transform(st_crs(lambert.prj))
 
 # Write out the top 100 fires
-st_write(fired.t100, "../data/fastest_fired.gpkg", delete_dsn=T)
-st_write(ics.fired.t100, "../data/fastest_ics-fired.gpkg", delete_dsn=T)
-
-# clean and export as csv
-ics.fired.t100 <- ics.fired.t100 %>%
- dplyr::select(INCIDENT_NAME, FIRED_ID, ig_year, mx_grw_km2, mx_grw_ha, event_dur, tot_ar_km2, tot_ar_ha, 
-        STR_DESTROYED_TOTAL, STR_DESTROYED_RES_TOTAL, 
-        # bupr_sum, bupr_sum1km, bupr_sum4km,
-        PROJECTED_FINAL_IM_COST, TOTAL_PERSONNEL_SUM, WF_MAX_FSR, STUSPS, 
-        # NA_L3NAME, GACCAbbrev
-        )
-
-write_csv(ics.fired.t100, "../data/fastest_ics-fired.csv")
+st_write(fired.fast, "../../data/spatial/mod/conus_fast-fires_2001to2020.gpkg", delete_dsn=T)
+st_write(fired.t100, "../../data/spatial/mod/fastest100_fired.gpkg", delete_dsn=T)
+st_write(ics.fired.t100, "../../data/spatial/mod/fastest100_ics-fired.gpkg", delete_dsn=T)
 ```
 
 ```{r}
-
-#################################################
-###Print some statistics of the fast fires subset
+# Print some statistics of the fast fires subset
 print("1.7% of fires in the FIRED database meet the fast fires threshold ...")
 print("~~~~~~~~~~~Summary of Max Growth~~~~~~~~~~~~~")
 summary(fired.fast$mx_grw_km2)
 print("~~~~~~~~~~~BURNED AREA~~~~~~~~~~~~~")
-paste("% of total burned area: ",
-      sum(fired.fast$tot_ar_km2)/sum(fired$tot_ar_km2)*100, sep="")
+paste0("% of total burned area: ",
+      sum(fired.fast$tot_ar_km2)/sum(fired$tot_ar_km2)*100)
 print("~~~~~~~~~~~BUPR~~~~~~~~~~~~~")
-paste("Number of exposed properties within perimeter: ", sum(fired.fast$bupr_sum), sep="")
-paste("Number of exposed properties within 1km: ", sum(fired.fast$bupr_sum1k), sep="")
-###Compare with total BUPR
-paste("% of total BUPR in perimeters: ",
-      sum(fired.fast$bupr_sum)/sum(fired$bupr_sum)*100, sep="")
-paste("% of total BUPR within 1km: ",
-      sum(fired.fast$bupr_sum1k)/sum(fired$bupr_sum1k)*100, sep="")
-
+paste0("Number of exposed properties within perimeter: ", sum(fired.fast$bupr_sum,na.rm=T))
+paste0("Number of exposed properties within 1km: ", sum(fired.fast$bupr_sum1k,na.rm=T))
+paste0("Number of exposed properties within 4km: ", sum(fired.fast$bupr_sum4k,na.rm=T))
 ```
 
 Figure 1. Spatial distribution of fast fires across CONUS. Top 100 fastest fires are highlighted by size/color.
 
-```{r fig.height=4, fig.width=6, warning=F}
+```{r warning=F, message=F}
+
+# Bring in cities and lakes
+cities <- st_read(paste0(maindir,"/data/boundaries/political/USGS/USA_MajorCities.shp")) %>%
+ st_transform(st_crs(lambert.prj)) %>%
+ filter(NAME == "Denver")
+lakes <- st_read(paste0(maindir,"/data/water/great_lakes.gpkg"))
 
 # Spatial map of top 100
-# Map
 centroid1 <- st_centroid(fired.fast)
 centroid2 <- st_centroid(fired.t100)
 centroid3 <- st_centroid(ics.fired.t100)
 
-# plotcolor="#662506", sh
 f1 <- ggplot() + 
-   geom_sf(data = conus, size=0.2, color=alpha("gray40", 0.25)) +
-   geom_sf(data = centroid1, color=alpha("gray20", 0.5), size=0.3) +
+   geom_sf(data = states, lwd=0.7, color=alpha("gray20", 0.85), fill=alpha("white",0.75)) +
+   geom_sf(data = states %>% st_buffer(1e5), color=NA, fill=NA) +
+   geom_sf(data = centroid1, color=alpha("gray40", 1), size=0.3) +
    geom_sf(data = centroid2, aes(color=mx_grw_ha, size=mx_grw_ha)) +
-   scale_color_viridis_c(trans="log10", option="inferno", direction=-1) +
-   labs(title="",
-        fill="", color="Max Single-Day Growth (ha)")+
-   guides(color = guide_colourbar(direction = "horizontal", barwidth = 8, barheight = 0.5, 
+   # geom_sf(data=cities, size=2.5, shape=18) +
+   # geom_sf(data=lakes, color=NA, fill="grey75") +
+   scale_color_viridis_c(trans="log", option="inferno", direction=-1,
+                         breaks=c(20000,40000,80000,160000),
+                         labels=c("20k","40k","80k","160k")) +
+   labs(fill="", color="Max Single-Day Growth (ha/day)") +
+   guides(color = guide_colourbar(direction = "horizontal", barwidth = 11, barheight = 0.60, 
                                   ticks=F, title.position = "top"),
-          label.theme = element_text(angle = 0, size = 8),
-          size="none")+
-   theme_void()+
-   theme(plot.margin = unit(c(0.25,0.25,0.25,0.25), "lines"),
-         plot.title = element_text(hjust = 0.5, size=11),
-         legend.title = element_text(angle = 0, size=8),
-         legend.text = element_text(size=7),
-         legend.position=c(0.2, 0.1))
+          label.theme = element_text(angle = 0, size = 9),
+          size="none") +
+   theme_void() +
+   theme(plot.margin = unit(c(0.0,0.0,0.0,0.0), "in"),
+         plot.title = element_blank(),
+         legend.title = element_text(angle = 0, size=10),
+         legend.text = element_text(size=9),
+         legend.position=c(0.23, 0.08)) +
+   ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                               pad_x = unit(0.2,"in"), pad_y = unit(0.2,"in"),
+                               line_width = 0.5, text_pad = unit(0.15,"cm"),
+                               height = unit(0.15,"cm")) +
+   ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                     pad_x = unit(0.3,"in"), pad_y= unit(0.4,"in"),
+                                     width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                     style = north_arrow_fancy_orienteering)
 f1
 
-# # Save it out
-# ggsave(f1, file = "fastest_fires_conus.png", 
-#        width=6, height=3.5, dpi = 500, bg="white") # adjust dpi accordingly
+# Save it out
+ggsave(f1, file = "../../figures/Figure1_fastest_fires_conus.png",
+       dpi = 300, bg="white") # adjust dpi accordingly
 
+rm(f1,centroid1,centroid2,centroid3,cities,lakes)
 ```
 
-Identify top three fastest, most destructive fires.
+Table 1. Top 20 fastest fires in CONUS (2000-2020)
+
+Retrieve the ICS209-PLUS records for the top 20 fastest fires, where possible. Some fires identified in the top 100 fastest FIRED perimeters do not have a certain match in ICS209-PLUS. So, this list had to be quality controlled with some manual testing.
 
 ```{r}
 
-tmp <- top_n(ics.fast,100,WF_MAX_FSR_HA)
+# "2005_NV-LVD-000042_SOUTHERN NEVADA COMPLEX"
 
-most.dest <- top_n(ics.fired.t100, 25, STR_DESTROYED_RES_TOTAL) %>%
- dplyr::select(INCIDENT_NAME,ig_year,STUSPS,STR_DESTROYED_RES_TOTAL)
-head(most.dest,10)
-View(most.dest)
+# INCIDENT_ID list for the top 20 fastest fires"
+qc_list <- c("2020_COLD SPRINGS COMPLEX","2020_11850821_LNU LIGHTNING COMPLEX")
+incid_list <- c("2017_7155675_NW OKLAHOMA COMPLEX", "2012_OR-VAD-000067_LONG DRAW", "2017_7161319_PERRYTON",
+                "2016_4258135_ANDERSON CREEK FIRE", "2007_ID-TFD-002030_MURPHY COMPLEX",
+                "2006_TX-TXS-066077_EAST AMARILLO COMPLEX","2018_9206799_MARTIN", "2007_UT-SWS-070312_MILFORD FLAT",
+                "2008_TX-TXS-88071_GLASS FIRE", "2014_634805_BUZZARD COMPLEX", "2020_11843929_AUGUST COMPLEX",
+                "2012_ID-TFD-000263_KINYON ROAD", "2015_2880290_SODA", "2018_9021840_RHEA",
+                "2020_11865970_NORTH COMPLEX", "2003_CA-CNF-003056_CEDAR", "2011_TX-TXS-011088_COOPER MOUNTAIN RANCH",
+                "2007_CA-MVU-010432_WITCH")
 
+# Grab the ICS209-PLUS records
+ics.t <- ics %>% filter(INCIDENT_ID %in% incid_list)
+
+# Grab the "QC" fires
+ics.t.a <- st_read(paste0(maindir,"/home-loss/data/spatial/mod/ics-fired_spatial_west_mod.gpkg")) %>%
+ st_transform(st_crs(lambert.prj)) %>%
+ filter(INCIDENT_ID %in% qc_list) %>%
+ st_set_geometry(NULL) %>% as_tibble()
+
+# Export the table of top 20 fastest fires (QCd)
+ics.t %>%
+ bind_rows(ics.t.a) %>%
+ write_csv('../../data/tabular/fastest20_qc_table.csv')
+
+rm(ics.t,ics.t.a,qc_list,incid_list,fired.t100,ics.fired.t100)
+gc()
 ```
 
-3-panel, destructive fast fires
+Figure 2. Case study, selection of fast fires from the top 100 with ZTRAX point locations and daily burned area.
+
+Load the ZTRAX:
+
+```{r}
+ztrax <- st_read("../../data/spatial/mod/ztrax/extract/zasmt_fast_fires_extract.shp")%>%
+ st_transform(st_crs(mtbs))
+```
+
+NW OKLAHOMA COMPLEX:
+
+The fastest recorded fire in the database ...
+
+```{r}
+# MTBS footprint
+nw_ok_complex_mtbs <- mtbs %>%
+ filter(Event_ID %in% c("OK3671009983720170307",'OK3677410017520170307'))
+# ZTRAX point locations
+ztrax_ext <- ztrax %>% 
+ filter(YearBuilt<=2017) %>%
+ st_intersection(., nw_ok_complex_mtbs)
+
+# Setup the burndate raster
+year <- '2017'
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/raw/burndate/",year,"/")
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(nw_ok_complex_mtbs) %>%
+   raster::mask(nw_ok_complex_mtbs)
+
+# Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+# Convert to days since ignition
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+# Extract as DF
+modis_burn_dates <- as.data.frame(modis_burn_dates, xy = TRUE)
+# Plot
+nw_ok_complex_map <- ggplot() +
+   geom_raster(data = modis_burn_dates , aes(x = x, y = y, fill=annual_burndate_y2017)) +
+   scale_fill_fermenter(n.breaks=5, palette="Reds", na.value="white") +
+   geom_sf(data=oks_fire_mtbs, fill="transparent", size=0.65)+
+   geom_sf(data=ztrax_ext, color=alpha("black",0.3), size=0.85, shape=18, show.legend = TRUE)+
+   labs(title="OKS-Starbuck Fire, OK (2017)",
+        fill="Days Since Ignition")+
+   theme_void()+
+   theme(legend.position="bottom",
+         plot.title = element_text(hjust = 0.5))+
+   guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5,
+                                 barwidth = 12, barheight = 0.5,
+                                 ticks=FALSE, draw.llim=FALSE))+
+   ggsn::scalebar(oks_fire_mtbs, dist = 10, st.size=2.5, height=0.01, 
+                  dist_unit="km", model = 'WGS84', transform=TRUE)+
+   coord_sf()
+nw_ok_complex_map
+```
+
 
 ```{r}
 
@@ -261,11 +315,6 @@ north.map <- ggplot() +
    coord_sf()
 
 north.map
-
-```
-
-```{r}
-
 
 ```
 
@@ -552,61 +601,7 @@ woolsey_fire_map <- ggplot() +
 woolsey_fire_map
 ```
 
-```{r}
-###MTBS
-oks_fire_mtbs <- mtbs %>%
-   filter(Event_ID == 'OK3677410017520170307')
 
-###ZTRAX
-ztrax_ext <- ztrax %>% filter(YearBuilt<=2017) %>%
-   st_intersection(., oks_fire_mtbs)
-
-#FIRED
-oks_fire_evt <- fired%>%filter(id==112198)
-
-year <- '2017'
-fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
-
-###Hayman fire example
-# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
-modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
-   raster::crop(oks_fire_mtbs) %>%
-   raster::mask(oks_fire_mtbs)
-
-#Grab the range of burn days
-range <- range(modis_burn_dates[],na.rm=TRUE)
-breaks <- abs(range[1]-range[2])
-start <- as.numeric(range[1])
-
-modis_burn_dates <- modis_burn_dates - start
-range <- range(modis_burn_dates[],na.rm=TRUE)
-
-#Extract as DF
-modis_burn_dates <- as.data.frame(modis_burn_dates, xy = TRUE)
-#Plot
-oks_fire_map <- ggplot() +
-   geom_raster(data = modis_burn_dates , aes(x = x, y = y, fill=annual_burndate_y2017)) +
-   # scico::scale_fill_scico(palette = "lajolla", na.value="white", alpha=0.9,
-   #                         breaks=seq(0,35,5), labels=c(0,5,10,15,20,25,30,35))+
-   # scale_fill_distiller(palette = 'YlOrRd', direction=-2, breaks=seq(0,35,5),
-   #                      na.value="white")+
-   scale_fill_fermenter(n.breaks=5, palette="Reds", na.value="white") +
-   geom_sf(data=oks_fire_mtbs, fill="transparent", size=0.65)+
-   geom_sf(data=ztrax_ext, color=alpha("black",0.3), size=0.85, shape=18, show.legend = TRUE)+
-   labs(title="OKS-Starbuck Fire, OK (2017)",
-        fill="Days Since Ignition")+
-   theme_void()+
-   theme(legend.position="bottom",
-         plot.title = element_text(hjust = 0.5))+
-   guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5,
-                                 barwidth = 12, barheight = 0.5,
-                                 ticks=FALSE, draw.llim=FALSE))+
-   ggsn::scalebar(oks_fire_mtbs, dist = 10, st.size=2.5, height=0.01, 
-                  dist_unit="km", model = 'WGS84', transform=TRUE)+
-   coord_sf()
-
-oks_fire_map
-```
 
 ```{r king fire}
 king_fire <- inci209 %>%

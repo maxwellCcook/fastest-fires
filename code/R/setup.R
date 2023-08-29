@@ -18,7 +18,9 @@ library(RColorBrewer)
 library(ggsn)
 library(ggspatial)
 
-maindir = getwd()
+maindir = '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook'
+icsdir <- '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/ics209-plus-fired'
+firedir <- '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/FIRED'
 
 # Define the MODIS projection
 modis.prj = "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m"
@@ -27,29 +29,30 @@ lambert.prj <- "+proj=laea +lat_0=45 +lon_0=-100 +x_0=0 +y_0=0 +a=6370997 +b=637
 # Default WGS projection
 wgs.prj <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
 
-######
-# Data
+########
+# Data #
+########
 
 # ICS-209-PLUS (1999-2020)
-ics209s <- st_read("../../ics209-plus-fired/data/spatial/raw/wf-incidents/ics-209-plus-2.0/ics209plus-wf_incidents_spatial_us_ak_1999to2020.gpkg")
+ics <- st_read(paste0(icsdir,"/data/spatial/raw/wf-incidents/ics-209-plus-2.0/ics209plus-wf_incidents_spatial_us_1999to2020.gpkg")) %>%
+ filter(START_YEAR > 1999) %>%
+ st_transform(st_crs(lambert.prj))
 
 # FIRED (2001-2020)
-fired <- st_read("../../fired/data/spatial/mod/fired_events_conus_to2021091.gpkg")
+fired <- st_read(paste0(firedir,"/data/spatial/mod/fired_events_conus_to2021091.gpkg")) %>%
+ filter(ig_year < 2021) %>%
+ st_transform(st_crs(lambert.prj))
 
-# ICS-FIRED (2001-2020)
-ics.fired <-  st_read("../../ics209-plus-fired/data/spatial/mod/ics-fired/final/ics209plus_fired_events_cleaned.gpkg")
-
-# # NIFC fire perimeters
-# nifc <- st_read("data/spatial/raw/nifc/public_nifc_perims.gpkg")
+# ICS-FIRED (2001-2020) manually QC'd for home loss work
+ics.fired <-  st_read(paste0(icsdir,"/data/spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg")) %>%
+ st_transform(st_crs(lambert.prj))
 
 # Bring in MTBS perims
-mtbs <- st_read("../../data/mtbs/mtbs_perimeter_data/mtbs_perims_conus.gpkg") %>% mutate(
- Incid_Year = lubridate::year(Ig_Date)
-) %>% filter(Incid_Year>=2000 & Incid_Year<=2020)
+mtbs <- st_read(paste0(maindir,"/data/mtbs/mtbs_perimeter_data/mtbs_perims_conus.gpkg")) %>% 
+ mutate(Incid_Year = lubridate::year(Ig_Date)) %>% 
+ filter(Incid_Year>=2000 & Incid_Year<=2020) %>%
+ st_transform(st_crs(lambert.prj))
 
-# boundaries
-states <- st_read("../../data/boundaries/political/TIGER/tl19_us_states_conus.gpkg")
-
-# # ZTRAX
-# ztrax <- st_read("data/spatial/mod/ztrax/extract/zasmt_fast_fires_extract.shp")%>%
-#  st_transform(st_crs(mtbs))
+# Boundaries
+states <- st_read(paste0(maindir,"/data/boundaries/political/TIGER/tl19_us_states_conus.gpkg")) %>%
+ st_transform(st_crs(lambert.prj))
