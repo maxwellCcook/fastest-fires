@@ -3,19 +3,13 @@
 # Libraries
 
 library(tidyverse)
-library(dplyr)
 library(sf)
 library(lubridate)
 library(scales)
-library(gridExtra)
 library(ggpubr)
-library(ggthemes)
-library(formattable)
-library(raster)
-library(rasterVis)
+library(terra)
+library(tidyterra)
 library(scales)
-library(RColorBrewer)
-library(ggsn)
 library(ggspatial)
 
 maindir = '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook'

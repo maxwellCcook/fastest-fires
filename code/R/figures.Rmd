@@ -10,29 +10,44 @@ source("setup.R")
 
 Summary of Fast Fire impacts from the ICS-209-PLUS (1999-2020). 
 
-First, we need to handle possible multiple entries due to the reporting nature for complex fires.
+First, we need to handle possible multiple entries due to the reporting nature for complex fires. If this is not done, there are likely double counts for attributes like burned area and destroyed structures.
 
-```{r include=F}
+```{r}
+icsdir <- '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/ics209-plus-fired/data/'
 # Load the complex associations table
-complex <- read_csv(paste0(icsdir,"/data/tabular/raw/wf-incidents/ics-plus_v2.0/
-                           icsplus-wildfire/ics-plus-wf_complex_associations_1999to2020.csv"))
+complex.df <- suppressMessages(
+ read_csv(paste0(
+  icsdir,"tabular/raw/wf-incidents/ics209-plus_v2.0/ics209plus-wildfire/ics209-plus-wf_complex_associations_1999to2020.csv"
+ ), show_col_types = FALSE)
+)
+
 # Isolate non-complex fires
-no.cmplx <- ics %>% 
+no.complexes <- ics %>% 
  # Remove some known "problem fires"
  filter(INCIDENT_ID != "2017_7211255_REDWOOD VALLEY INCIDENT",
         INCIDENT_ID != "2017_7293073_REDWOOD VALLEY INCIDENT") %>%
  # Filter incidents with 0 acres
  filter(FINAL_ACRES!=0,
         # remove incidents found in the complex associations table
-        !INCIDENT_ID %in% complex$MEMBER_INCIDENT_ID,
+        ! INCIDENT_ID %in% complex.df$MEMBER_INCIDENT_ID,  # member incidents
+        ! INCIDENT_ID %in% complex.df$CPLX_INCIDENT_ID,  # complex fires
         # filter to fires where FPA-FOD shows 1 event or NULL
         FOD_FIRE_NUM==1 | is.na(FOD_FIRE_NUM))
+
+# Check the number of complex fires in the complex association table
+length(unique(complex.df$CPLX_INCIDENT_ID))
+
 # Isolate complex fires
-cmplx <- ics %>%
- filter(INCIDENT_ID %in% complex$CPLX_INCIDENT_ID)
-# bind to a temporary layer
-ics <- bind_rows(no.cmplx,cmplx)
-rm(no.cmplx,cmplx,complex)
+complexes <- ics %>%
+ filter(INCIDENT_ID %in% complex.df$CPLX_INCIDENT_ID)
+
+# Check the number of complex fires in that match
+dim(complexes)
+
+# Bind back to the ICS209-PLUS
+ics <- bind_rows(complexes,no.complexes)
+rm(complexes,no.complexes,complex.df)
+gc()
 ```
 
 Summary statistics from the ICS209-PLUS:
@@ -72,16 +87,18 @@ st_write(ics.fast, "../../data/spatial/mod/ics209plus_conus_fast_2000to2020.gpkg
 
 Subset FIRED events to fast fires (max daily growth > 1620ha). Exclude cropland systems.
 
-```{r warning=F}
-
-bupr <- read_csv("../../data/tabular/bupr_sums.csv") %>%
+```{r warning=F, message=F}
+# Load the BUPR summaries
+bupr <- read_csv("../../data/tabular/bupr_sums.csv",show_col_types = FALSE) %>%
  dplyr::select(id,bupr_sum,bupr_sum1km,bupr_sum4km)
 
 # Remove fired that occurred predominantly in cropland landcover
 fired.fast <- fired %>% 
  dplyr::select(-c(bupr_sum,bupr_sum1k)) %>%
  filter(lc_name != "Croplands") %>%
- mutate(mx_grw_ha = mx_grw_km2*100) %>% 
+ mutate(tot_ar_ha = tot_ar_km2*100,
+        mx_grw_ha = mx_grw_km2*100,
+        mx_grw_pct = (mx_grw_ha / tot_ar_ha)*100) %>% 
  filter(mx_grw_ha >= 1620) %>%
  st_transform(st_crs(lambert.prj)) %>%
  # Join to BUPR summary
@@ -92,7 +109,8 @@ fired.t100 <- top_n(fired.fast, 100, mx_grw_ha)
 # Get the top 100 fastest fires in ICS-FIRED
 ics.fired.t100 <- ics.fired %>%
  mutate(mx_grw_ha = mx_grw_km2*100,
-        tot_ar_ha = tot_ar_km2*100) %>%
+        tot_ar_ha = tot_ar_km2*100,
+        mx_grw_pct = (mx_grw_ha / tot_ar_ha)*100) %>%
  filter(mx_grw_ha >= 1620) %>%
  top_n(., 100, mx_grw_ha) %>%
  st_transform(st_crs(lambert.prj))
@@ -106,6 +124,7 @@ st_write(ics.fired.t100, "../../data/spatial/mod/fastest100_ics-fired.gpkg", del
 ```{r}
 # Print some statistics of the fast fires subset
 print("1.7% of fires in the FIRED database meet the fast fires threshold ...")
+1620/95888*100
 print("~~~~~~~~~~~Summary of Max Growth~~~~~~~~~~~~~")
 summary(fired.fast$mx_grw_km2)
 print("~~~~~~~~~~~BURNED AREA~~~~~~~~~~~~~")
@@ -172,7 +191,7 @@ rm(f1,centroid1,centroid2,centroid3,cities,lakes)
 
 Table 1. Top 20 fastest fires in CONUS (2000-2020)
 
-Retrieve the ICS209-PLUS records for the top 20 fastest fires, where possible. Some fires identified in the top 100 fastest FIRED perimeters do not have a certain match in ICS209-PLUS. So, this list had to be quality controlled with some manual testing.
+Retrieve the ICS209-PLUS records for the top 20 fastest fires, where possible. Some fires identified in the top 100 fastest FIRED perimeters do not have a certain match in ICS209-PLUS. So, this list had to be manually quality controlled.
 
 ```{r}
 
@@ -208,32 +227,437 @@ gc()
 
 Figure 2. Case study, selection of fast fires from the top 100 with ZTRAX point locations and daily burned area.
 
-Load the ZTRAX:
+Load the ZTRAX point data and the list of fire boundaries (using MTBS):
 
 ```{r}
+# ZTRAX point locations
 ztrax <- st_read("../../data/spatial/mod/ztrax/extract/zasmt_fast_fires_extract.shp")%>%
  st_transform(st_crs(mtbs))
+# # Selected MTBS fires
+# mtbs_ <- mtbs %>%
+#  filter(Event_ID %in% c(
+#   # NW Oklahoma Complex, OK & KS (2017)
+#   "OK3671009983720170307","OK3677410017520170307",
+#   # Cold Springs, WA (2020)
+#   "WA4836011949320200907",
+#   # Martin Fire, NV (2018)
+#   "NV4152811742720180705",
+#   # Cedar Fire, CA (2003)
+#   "CA3293911676620031025"))
 ```
 
-NW OKLAHOMA COMPLEX:
-
-The fastest recorded fire in the database ...
+NW Oklahoma Complex, OK/KS (2017):
 
 ```{r}
-# MTBS footprint
-nw_ok_complex_mtbs <- mtbs %>%
- filter(Event_ID %in% c("OK3671009983720170307",'OK3677410017520170307'))
-# ZTRAX point locations
-ztrax_ext <- ztrax %>% 
- filter(YearBuilt<=2017) %>%
- st_intersection(., nw_ok_complex_mtbs)
 
-# Setup the burndate raster
-year <- '2017'
-fire_dir <- paste0(maindir,"/fast-fires/data/spatial/raw/burndate/",year,"/")
-modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
-   raster::crop(nw_ok_complex_mtbs) %>%
-   raster::mask(nw_ok_complex_mtbs)
+# Grab the start and end DOY
+evt <- fired.fast %>% 
+ filter(id %in% c(33409,33411)) %>%
+ mutate(last_day = lubridate::yday(last_date))
+start_doy = min(evt$ig_day) # first DOY
+end_doy = max(evt$last_day) # end DOY
+
+# Set the geometries
+st_agr(mtbs) <- "constant"
+st_agr(ztrax) <- "constant"
+
+# MTBS footprint
+fire <- mtbs %>%
+  filter(Event_ID %in% c("OK3671009983720170307","OK3677410017520170307")) %>%
+  st_transform(st_crs(lambert.prj))
+
+# ZTRAX point locations
+points <- ztrax %>% 
+  filter(YearBuilt <= 2017) %>%
+  st_intersection(., fire%>%st_buffer(1000)) %>%
+  st_transform(st_crs(lambert.prj))
+
+# Convert to SpatVects
+fire <- vect(fire)
+points <- vect(points)
+
+# Load the burndate raster (MCD64A1)
+# Reproject the grid and crop to the fire perimeter
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/mod/mcd64a1/")
+mcd64 <- terra::rast('../../data/spatial/mod/mcd64a1/mcd64a1_annual_burndate_y2017.tif')
+mcd64 <- terra::project(mcd64,crs(lambert.prj, proj=TRUE))
+mcd64 <- terra::crop(mcd64,fire,mask=T)
+
+# Convert to data frame
+p1 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
+ value = as.integer(mcd64a1_annual_burndate_y2017)
+) %>% 
+ dplyr::select(-mcd64a1_annual_burndate_y2017) %>%
+ mutate(value = if_else(value < start_doy, NA, value),
+        value = if_else(value > end_doy, NA, value),
+        value = value - start_doy,
+        value = if_else(value > 5, 6, value)) %>%
+ filter(value > 0) %>%
+ drop_na() %>%
+ ggplot() +
+ geom_raster(aes(x = x, y = y, fill = value)) +
+ # scale_fill_brewer(palette="Reds", na.value="white", direction=-1) +
+ scale_fill_fermenter(breaks = c(1:5,6), palette = "Reds") + 
+ # Add the fire boundary
+ geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
+ geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
+ coord_sf() +
+ labs(fill="Days Since Ignition") +
+ theme_void() +
+ theme(legend.position="none",
+       plot.title = element_text(hjust = 0.5)) +
+ guides(fill = element_blank()) +
+ # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
+ #                               barwidth = 12, barheight = 0.5,
+ #                               ticks=FALSE, draw.llim=FALSE)) +
+ ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                             pad_x = unit(0.2,"in"), pad_y = unit(0.2,"in"),
+                             line_width = 0.5, text_pad = unit(0.15,"cm"),
+                             height = unit(0.15,"cm")) +
+ ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                   pad_x = unit(0.3,"in"), pad_y= unit(0.4,"in"),
+                                   width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                   style = north_arrow_fancy_orienteering)
+p1
+gc()
+
+# Save the image
+ggsave(p1, file = "../../figures/FigureX_NWOKCMPLXFire.png",
+       dpi = 300, bg="transparent") # adjust dpi accordingly
+
+```
+
+Cold Springs Fire, WA (2020)
+
+```{r}
+
+# Grab the start and end DOY
+start_doy = 250 # first DOY
+end_doy = 259 # end DOY
+
+# Set the geometries
+st_agr(mtbs) <- "constant"
+st_agr(ztrax) <- "constant"
+
+# MTBS footprint
+fire <- mtbs %>%
+  filter(Event_ID %in% c("WA4836011949320200907")) %>%
+  st_transform(st_crs(lambert.prj))
+
+# ZTRAX point locations
+points <- ztrax %>% 
+  filter(YearBuilt <= 2020) %>%
+  st_intersection(., fire%>%st_buffer(1000)) %>%
+  st_transform(st_crs(lambert.prj))
+
+# Convert to SpatVects
+fire <- vect(fire)
+points <- vect(points)
+
+# Load the burndate raster (MCD64A1)
+# Reproject the grid and crop to the fire perimeter
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/mod/mcd64a1/")
+mcd64 <- terra::rast('../../data/spatial/mod/mcd64a1/mcd64a1_annual_burndate_y2020.tif')
+mcd64 <- terra::project(mcd64,crs(lambert.prj, proj=TRUE))
+mcd64 <- terra::crop(mcd64,fire,mask=T)
+
+# Convert to data frame
+p2 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
+ value = as.integer(mcd64a1_annual_burndate_y2020)
+) %>% 
+ dplyr::select(-mcd64a1_annual_burndate_y2020) %>%
+ mutate(value = if_else(value < start_doy, NA, value),
+        value = if_else(value > end_doy, NA, value),
+        value = value - start_doy,
+        value = if_else(value > 5, 6, value)) %>%
+ drop_na() %>%
+ ggplot() +
+ geom_raster(aes(x = x, y = y, fill = value)) +
+ # scale_fill_brewer(palette="Reds", na.value="white", direction=-1) +
+ scale_fill_fermenter(breaks = c(1:5,6), palette = "Reds") +
+ # Add the fire boundary
+ geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
+ geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
+ coord_sf() +
+ labs(fill="Days Since Ignition") +
+ theme_void() +
+ theme(legend.position="none",
+       plot.title = element_text(hjust = 0.5)) +
+ # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
+ #                               barwidth = 12, barheight = 0.5,
+ #                               ticks=FALSE, draw.llim=FALSE)) +
+ ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                             pad_x = unit(0.0,"in"), pad_y = unit(0.2,"in"),
+                             line_width = 0.5, text_pad = unit(0.15,"cm"),
+                             height = unit(0.15,"cm")) +
+ ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                   pad_x = unit(0.1,"in"), pad_y= unit(0.4,"in"),
+                                   width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                   style = north_arrow_fancy_orienteering)
+p2
+gc()
+
+# Save the image
+ggsave(p2, file = "../../figures/FigureX_ColdSpringsFire.png",
+       dpi = 300, bg="transparent") # adjust dpi accordingly
+
+```
+
+Martin Fire, NV (2018)
+
+```{r}
+
+# Grab the start and end DOY
+evt <- fired.fast %>% 
+ filter(id %in% c(122367)) %>%
+ mutate(last_day = lubridate::yday(last_date))
+start_doy = min(evt$ig_day) # first DOY
+end_doy = max(evt$last_day) # end DOY
+
+# Set the geometries
+st_agr(mtbs) <- "constant"
+st_agr(ztrax) <- "constant"
+
+# MTBS footprint
+fire <- mtbs %>%
+  filter(Event_ID %in% c("NV4152811742720180705")) %>%
+  st_transform(st_crs(lambert.prj))
+
+# ZTRAX point locations
+points <- ztrax %>% 
+  filter(YearBuilt <= 2018) %>%
+  st_intersection(., fire) %>%
+  st_transform(st_crs(lambert.prj))
+
+# Convert to SpatVects
+fire <- vect(fire)
+points <- vect(points)
+
+# Load the burndate raster (MCD64A1)
+# Reproject the grid and crop to the fire perimeter
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/mod/mcd64a1/")
+mcd64 <- terra::rast('../../data/spatial/mod/mcd64a1/mcd64a1_annual_burndate_y2018.tif')
+mcd64 <- terra::project(mcd64,crs(lambert.prj, proj=TRUE))
+mcd64 <- terra::crop(mcd64,fire,mask=T)
+
+# Convert to data frame
+p3 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
+ value = as.integer(mcd64a1_annual_burndate_y2018)
+) %>% 
+ dplyr::select(-mcd64a1_annual_burndate_y2018) %>%
+ mutate(value = if_else(value < start_doy, NA, value),
+        value = if_else(value > end_doy, NA, value),
+        value = value - start_doy,
+        value = if_else(value > 5, 6, value)) %>%
+ filter(value > 0) %>%
+ drop_na() %>%
+ ggplot() +
+ geom_raster(aes(x = x, y = y, fill = value)) +
+ # scale_fill_brewer(palette="Reds", na.value="white", direction=-1) +
+ scale_fill_fermenter(breaks = c(1:5,6), palette = "Reds") + 
+ # Add the fire boundary
+ geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
+ geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
+ coord_sf() +
+ labs(fill="Days Since Ignition") +
+ theme_void() +
+ theme(legend.position="none",
+       plot.title = element_text(hjust = 0.5),
+       plot.margin = unit(c(1,1,1,1),'lines')) +
+ # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
+ #                               barwidth = 12, barheight = 0.5,
+ #                               ticks=FALSE, draw.llim=FALSE)) +
+ ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                             pad_x = unit(0.2,"in"), pad_y = unit(0.2,"in"),
+                             line_width = 0.5, text_pad = unit(0.15,"cm"),
+                             height = unit(0.15,"cm")) +
+ ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                   pad_x = unit(0.3,"in"), pad_y= unit(0.4,"in"),
+                                   width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                   style = north_arrow_fancy_orienteering)
+p3
+gc()
+
+# Save the image
+ggsave(p3, file = "../../figures/FigureX_MartinFire.png",
+       dpi = 300, bg="transparent") # adjust dpi accordingly
+
+```
+
+Long Draw Fire, OR (2012) - the 2nd fastest fire
+
+```{r}
+
+# Grab the start and end DOY
+evt <- fired.fast %>% 
+ filter(id %in% c(82548)) %>%
+ mutate(last_day = lubridate::yday(last_date))
+start_doy = min(evt$ig_day) # first DOY
+end_doy = max(evt$last_day) # end DOY
+
+# Set the geometries
+st_agr(mtbs) <- "constant"
+st_agr(ztrax) <- "constant"
+
+# MTBS footprint
+fire <- mtbs %>%
+  filter(Event_ID %in% c("OR4239211789420120708")) %>%
+  st_transform(st_crs(lambert.prj))
+
+# ZTRAX point locations
+points <- ztrax %>% 
+  filter(YearBuilt <= 2012) %>%
+  st_intersection(., fire) %>%
+  st_transform(st_crs(lambert.prj))
+
+# Convert to SpatVects
+fire <- vect(fire)
+points <- vect(points)
+
+# Load the burndate raster (MCD64A1)
+# Reproject the grid and crop to the fire perimeter
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/mod/mcd64a1/")
+mcd64 <- terra::rast('../../data/spatial/mod/mcd64a1/mcd64a1_annual_burndate_y2012.tif')
+mcd64 <- terra::project(mcd64,crs(lambert.prj, proj=TRUE))
+mcd64 <- terra::crop(mcd64,fire,mask=T)
+
+# Convert to data frame
+p4 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
+ value = as.integer(mcd64a1_annual_burndate_y2012)
+) %>% 
+ dplyr::select(-mcd64a1_annual_burndate_y2012) %>%
+ mutate(value = if_else(value < start_doy, NA, value),
+        value = if_else(value > end_doy, NA, value),
+        value = value - start_doy,
+        value = if_else(value > 5, 6, value)) %>%
+ filter(value > 0) %>%
+ drop_na() %>%
+ ggplot() +
+ geom_raster(aes(x = x, y = y, fill = value)) +
+ # scale_fill_brewer(palette="Reds", na.value="white", direction=-1) +
+ scale_fill_fermenter(breaks = c(1:5,6), palette = "Reds") + 
+ # Add the fire boundary
+ geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
+ geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
+ coord_sf() +
+ labs(fill="Days Since Ignition",
+      subtitle = "") +
+ theme_void() +
+ theme(legend.position="none",
+       plot.title = element_text(hjust = 0.5),
+       plot.margin = unit(c(1,1,1,1),'lines')) +
+ # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
+ #                               barwidth = 12, barheight = 0.5,
+ #                               ticks=FALSE, draw.llim=FALSE)) +
+ ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                             pad_x = unit(0.2,"in"), pad_y = unit(0.2,"in"),
+                             line_width = 0.5, text_pad = unit(0.15,"cm"),
+                             height = unit(0.15,"cm")) +
+ ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                   pad_x = unit(0.3,"in"), pad_y= unit(0.4,"in"),
+                                   width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                   style = north_arrow_fancy_orienteering)
+p4
+gc()
+
+# Save the image
+ggsave(p4, file = "../../figures/FigureX_LongDrawFire.png",
+       dpi = 300, bg="transparent") # adjust dpi accordingly
+
+```
+
+Witch-Poomacha Fire, CA (2007) - highly destructive event
+
+```{r}
+
+# Grab the start and end DOY
+evt <- fired.fast %>% 
+ filter(id %in% c(46167)) %>%
+ mutate(last_day = lubridate::yday(last_date))
+start_doy = 291 # first DOY
+end_doy = max(evt$last_day) # end DOY
+
+# Set the geometries
+st_agr(mtbs) <- "constant"
+st_agr(ztrax) <- "constant"
+
+# MTBS footprint
+fire <- mtbs %>%
+  filter(Event_ID %in% c("CA3307911676620071021","CA3330011692020071023")) %>%
+  st_transform(st_crs(lambert.prj))
+
+# ZTRAX point locations
+points <- ztrax %>% 
+  filter(YearBuilt <= 2007) %>%
+  st_intersection(., fire) %>%
+  st_transform(st_crs(lambert.prj))
+
+# Convert to SpatVects
+fire <- vect(fire)
+points <- vect(points)
+
+# Load the burndate raster (MCD64A1)
+# Reproject the grid and crop to the fire perimeter
+fire_dir <- paste0(maindir,"/fast-fires/data/spatial/mod/mcd64a1/")
+mcd64 <- terra::rast('../../data/spatial/mod/mcd64a1/mcd64a1_annual_burndate_y2007.tif')
+mcd64 <- terra::project(mcd64,crs(lambert.prj, proj=TRUE))
+mcd64 <- terra::crop(mcd64,fire,mask=T)
+
+# Convert to data frame
+p5 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
+ value = as.integer(mcd64a1_annual_burndate_y2007)
+) %>% 
+ dplyr::select(-mcd64a1_annual_burndate_y2007) %>%
+ mutate(value = if_else(value < start_doy, NA, value),
+        value = if_else(value > end_doy, NA, value),
+        value = value - start_doy,
+        value = if_else(value > 5, 6, value)) %>%
+ filter(value > 0) %>%
+ drop_na() %>%
+ ggplot() +
+ geom_raster(aes(x = x, y = y, fill = value)) +
+ # scale_fill_brewer(palette="Reds", na.value="white", direction=-1) +
+ scale_fill_fermenter(breaks = c(1:5,6), palette = "Reds") + 
+ # Add the fire boundary
+ geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
+ geom_sf(data=points, color=alpha("black",0.45), size=0.65, shape=18) +
+ coord_sf() +
+ labs(fill="Days Since Ignition",
+      subtitle = "") +
+ theme_void() +
+ theme(legend.position="none",
+       plot.title = element_text(hjust = 0.5),
+       plot.margin = unit(c(1,1,1,1),'lines')) +
+ # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
+ #                               barwidth = 12, barheight = 0.5,
+ #                               ticks=FALSE, draw.llim=FALSE)) +
+ ggspatial::annotation_scale(location = "br", width_hint = 0.1,
+                             pad_x = unit(0.1,"in"), pad_y = unit(0.2,"in"),
+                             line_width = 0.5, text_pad = unit(0.15,"cm"),
+                             height = unit(0.15,"cm")) +
+ ggspatial::annotation_north_arrow(location = "br", which_north = "true",
+                                   pad_x = unit(0.1,"in"), pad_y= unit(0.3,"in"),
+                                   width = unit(0.8,"cm"), height = unit(0.8,"cm"),
+                                   style = north_arrow_fancy_orienteering)
+p5
+gc()
+
+# Save the image
+ggsave(p5, file = "../../figures/FigureX_WitchPoomachaFire.png",
+       dpi = 300, bg="transparent") # adjust dpi accordingly
+
+```
+
+3-Panel combined:
+
+```{r}
+ggpubr::ggarrange(p1, p2, p3, nrow = 1, common.legend = T, widths = c(2, 1.5, 3))
+```
+
+
+OLD:
+
+```{r}
 
 # Grab the range of burn days
 range <- range(modis_burn_dates[],na.rm=TRUE)
@@ -263,7 +687,6 @@ nw_ok_complex_map <- ggplot() +
    coord_sf()
 nw_ok_complex_map
 ```
-
 
 ```{r}
 
@@ -318,7 +741,6 @@ north.map
 
 ```
 
-
 1. Hayman Fire, CO (2003)
 
 ```{r fig.height=4, fig.width=3}
@@ -366,7 +788,7 @@ f1
 
 Fire spread plot for the Hayman Fire, CO (2002)
 
-```{r warning=F, fig.height=4, fig.width=3}
+```{r hayman}
 # MTBS
 hayman.mtbs <- mtbs %>%
    filter(Event_ID == 'CO3922010528720020608')
@@ -426,7 +848,6 @@ hayman.map <- ggplot() +
 hayman.map
 ```
 
-
 ```{r tubbs}
 ###MTBS
 tubbs_fire_mtbs <- mtbs %>%
@@ -479,7 +900,6 @@ tubbs_fire_map <- ggplot() +
 
 tubbs_fire_map
 ```
-
 
 ```{r camp}
 #FIRED
@@ -542,7 +962,7 @@ camp_fire_map <- ggplot() +
 camp_fire_map
 ```
 
-```{r}
+```{r woolsy}
 #FIRED
 woolsey_fire_evt <- fired %>% filter(id==124525)
 ignition_date <- camp_fire_evt$ignition_date
@@ -601,8 +1021,6 @@ woolsey_fire_map <- ggplot() +
 woolsey_fire_map
 ```
 
-
-
 ```{r king fire}
 king_fire <- inci209 %>%
   filter(INCIDENT_ID == "2014_983669_KING")
@@ -656,7 +1074,7 @@ king_fire_map <- rasterVis::levelplot(modis_burn_dates,
 king_fire_map
 ```
 
-```{r}
+```{r witch}
 ###MTBS
 witch_fire_mtbs <- mtbs %>%
    filter(Event_ID == 'CA3307911676620071021')
@@ -714,8 +1132,7 @@ witch_fire_map <- ggplot() +
 witch_fire_map
 ```
 
-
-```{r}
+```{r cold springs}
 cold_springs_cmplx <- nifc %>%
    filter(LocalIncid == "000594" |
           LocalIncid == "200130" |
@@ -773,7 +1190,7 @@ cold_springs_cmplx_map <- ggplot() +
 cold_springs_cmplx_map
 ```
 
-```{r}
+```{r claremont bear}
 claremont_bear <- nifc %>%
    filter(LocalIncid == "001308") %>%
    st_transform(crs = st_crs(mtbs))
@@ -829,7 +1246,7 @@ claremont_bear_map
 
 ```
 
-```{r}
+```{r august}
 august_cmplx <- nifc %>%
    filter(LocalIncid == "000753") %>%
    st_transform(crs = st_crs(mtbs))
