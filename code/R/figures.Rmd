@@ -308,8 +308,8 @@ p1 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
        plot.title = element_text(hjust = 0.5)) +
  guides(fill = element_blank()) +
  # guides(fill = guide_colorbar(title.position="top", title.hjust = 0.5,
- #                               barwidth = 12, barheight = 0.5,
- #                               ticks=FALSE, draw.llim=FALSE)) +
+ #                              barwidth = 12, barheight = 0.5,
+ #                              ticks=FALSE, draw.llim=FALSE)) +
  ggspatial::annotation_scale(location = "br", width_hint = 0.1,
                              pad_x = unit(0.2,"in"), pad_y = unit(0.2,"in"),
                              line_width = 0.5, text_pad = unit(0.15,"cm"),
@@ -570,6 +570,10 @@ Witch-Poomacha Fire, CA (2007) - highly destructive event
 
 ```{r}
 
+# Bring in the additional ZTRAX
+ztrax_add <- st_read('../../data/spatial/raw/boundaries/ztrax_poomacha_addin.gpkg') %>%
+ st_transform(st_crs(lambert.prj))
+
 # Grab the start and end DOY
 evt <- fired.fast %>% 
  filter(id %in% c(46167)) %>%
@@ -621,6 +625,7 @@ p5 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
  # Add the fire boundary
  geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
  geom_sf(data=points, color=alpha("black",0.45), size=0.65, shape=18) +
+ geom_sf(data=ztrax_add, color=alpha("black",0.45), size=0.65, shape=18) +
  coord_sf() +
  labs(fill="Days Since Ignition",
       subtitle = "") +
@@ -640,6 +645,7 @@ p5 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
                                    width = unit(0.8,"cm"), height = unit(0.8,"cm"),
                                    style = north_arrow_fancy_orienteering)
 p5
+rm(ztrax_add)
 gc()
 
 # Save the image
