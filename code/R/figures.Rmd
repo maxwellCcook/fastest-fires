@@ -61,6 +61,7 @@ ics.fast <- ics %>%
 
 # Summarize number of threatened, damaged, destroyed structures by fast fires from the 209s
 print("ICS-209-PLUS 1999-2020 Fast Fires, Structural Impacts: ")
+paste0("Total fast fires (N): ",dim(ics.fast)[1])
 print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 paste0("Total Structures Threatened: ", scales::comma(sum(ics.fast$STR_THREATENED_MAX, na.rm=TRUE)))
 paste0("Total Structures Damaged: ", scales::comma(sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)))
@@ -81,6 +82,11 @@ paste0("Total Suppression Costs: ",scales::comma(sum(ics.fast$PROJECTED_FINAL_IM
 paste0("Percent of Suppression Costs: ",
       scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/
                      sum(ics$PROJECTED_FINAL_IM_COST, na.rm=T)*100))
+print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+paste0("Total Fatalities:",sum(ics.fast$FATALITIES,na.rm=T))
+paste0("Percent of Fatalities:",sum(ics.fast$FATALITIES,na.rm=T)/sum(ics$FATALITIES,na.rm=T)*100)
+paste0("Total Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T))
+paste0("Percent of Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T)/sum(ics$INJURIES_TOTAL,na.rm=T)*100)
 # Write out
 st_write(ics.fast, "../../data/spatial/mod/ics209plus_conus_fast_2000to2020.gpkg", delete_dsn=T)
 ```
@@ -106,6 +112,7 @@ fired.fast <- fired %>%
 
 # Get the top 100 fastest fires in FIRED
 fired.t100 <- top_n(fired.fast, 100, mx_grw_ha)
+
 # Get the top 100 fastest fires in ICS-FIRED
 ics.fired.t100 <- ics.fired %>%
  mutate(mx_grw_ha = mx_grw_km2*100,
