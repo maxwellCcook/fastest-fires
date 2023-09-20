@@ -31,7 +31,13 @@ grids = glob.glob(buprdir+"/*.tif", recursive=True)
 img = rxr.open_rasterio(grids[0], masked=True)  # open the image for its CRS
 
 # Read in the fast FIRED events
-gdf_path = os.path.join(maindir,'earth-lab/fastest-fires/data/spatial/mod/conus_fast-fires_2001to2020.gpkg')
+# /Users/max/Library/CloudStorage/OneDrive-Personal/mcook/ics209-plus-fired/data/spatial/mod/ics-fired/final
+# gdf_path = os.path.join(maindir,'earth-lab/fastest-fires/data/spatial/mod/conus_fast-fires_2001to2020.gpkg')
+# 'ics209-plus-fired/data/spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg'
+# "FIRED/data/spatial/mod/event-updates/conus-ak_to2022_events_qc.gpkg"
+gdf_path = os.path.join(
+    maindir,"FIRED/data/spatial/mod/event-updates/conus-ak_to2022_events_qc.gpkg")
+
 gdf = gpd.read_file(gdf_path)
 gdf = gdf[['geometry','id','ig_year']]
 gdf = gdf.to_crs(crs=img.rio.crs.to_proj4())  # match the projection of the grid
@@ -91,6 +97,8 @@ for y in bupr_years:
         zs = zs.rename(columns={'sum': f'bupr_sum{labs[ii]}'})
         zs = zs[['id',f'bupr_sum{labs[ii]}']]
         zs['id'] = zs['id'].astype(int)
+        # zs = zs[['FIRED_ID',f'bupr_sum{labs[ii]}']]
+        # zs['id'] = zs['FIRED_ID'].astype(int)
         outs.append(zs)
     out_df = reduce(lambda a, b: pd.merge(a, b, on='id'), outs)
     print(out_df.head())
@@ -104,7 +112,10 @@ gdf_out = pd.concat(sums)
 
 # Write to file
 print("Writing output file ...")
-out_file = os.path.join(maindir,'earth-lab/fastest-fires/data/tabular/bupr_sums.csv')
+# out_file = os.path.join(maindir,'earth-lab/fastest-fires/data/tabular/bupr_sums.csv')
+# out_file = os.path.join(maindir,'ics209-plus-fired/data/tabular/mod/ics-fired_bupr_sums.csv')
+out_file = os.path.join(maindir,'ics209-plus-fired/data/tabular/mod/fired_qc_bupr_sums.csv')
+
 gdf_out.to_csv(out_file)
 
 # # Join back to the spatial data frame and write out

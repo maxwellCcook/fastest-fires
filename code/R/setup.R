@@ -11,6 +11,8 @@ library(terra)
 library(tidyterra)
 library(scales)
 library(ggspatial)
+library(flextable)
+library(here)
 
 maindir = '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook'
 icsdir <- '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/ics209-plus-fired'
@@ -32,14 +34,25 @@ ics <- st_read(paste0(icsdir,"/data/spatial/raw/wf-incidents/ics-209-plus-2.0/ic
  filter(START_YEAR > 1999) %>%
  st_transform(st_crs(lambert.prj))
 
-# FIRED (2001-2020)
+# FIRED (2001-2020). 
+# "../FIRED/data/spatial/mod/event-updates/conus-ak_to2022_events_qc.gpkg"
+# paste0(firedir,"/data/spatial/mod/fired_events_conus_to2021091.gpkg")
 fired <- st_read(paste0(firedir,"/data/spatial/mod/fired_events_conus_to2021091.gpkg")) %>%
  filter(ig_year < 2021) %>%
  st_transform(st_crs(lambert.prj))
 
 # ICS-FIRED (2001-2020) manually QC'd for home loss work
-ics.fired <-  st_read(paste0(icsdir,"/data/spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg")) %>%
+ics.fired <-  st_read(paste0(maindir,"/home-loss/data/spatial/mod/ics-fired_spatial_west_mod.gpkg")) %>%
  st_transform(st_crs(lambert.prj))
+# Add in the rest of the country from original database of ICS-FIRED
+og <- st_read(paste0(icsdir,"/data/spatial/mod/ics-fired/final/ics209plus_fired_events_combined.gpkg")) %>%
+ filter(!INCIDENT_ID %in% ics.fired$INCIDENT_ID) %>%
+ mutate(ig_date = as.Date(ig_date),
+        last_date = as.Date(last_date),
+        mx_grw_dte = as.Date(mx_grw_dte))
+ics.fired <- ics.fired %>%
+ bind_rows(og)
+rm(og)
 
 # Bring in MTBS perims
 mtbs <- st_read(paste0(maindir,"/data/mtbs/mtbs_perimeter_data/mtbs_perims_conus.gpkg")) %>% 
