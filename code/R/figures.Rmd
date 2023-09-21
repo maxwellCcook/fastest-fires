@@ -120,10 +120,48 @@ st_write(fired.t100, "../../data/spatial/mod/fastest100_fired.gpkg", delete_dsn=
 
 Set up the Table 1 and Supplemental Table 3:
 
+Addin the East Amarillo Complex
+
+```{r}
+# Load the QC FIRED (matches the ICS-FIRED version):
+fired.fast.qc <- st_read("../../data/spatial/mod/conus_fast-fires_qc_2001to2020.gpkg") %>%
+ rename(FIRED_ID = id) %>%
+ st_set_geometry(NULL) %>% as_tibble()
+
+# Add in the EAST AMARILLO COMPLEX fire manually
+addin.fired <- fired.fast.qc %>% filter(FIRED_ID == 40312) %>%
+ mutate(INCIDENT_ID = "2006_TX-TXS-066077_EAST AMARILLO COMPLEX")
+
+addin <- ics %>%
+ st_set_geometry(NULL) %>% as_tibble() %>%
+ filter(INCIDENT_ID == "2006_TX-TXS-066077_EAST AMARILLO COMPLEX") %>%
+ left_join(addin.fired, by="INCIDENT_ID") %>%
+ select(
+  -c(bupr_sum,bupr_sum1km,bupr_sum4km,lc_name,lc_description,GACCAbbrev,
+     NA_L3CODE,NA_L3NAME,NEON_DOMAIN,x,y,tot_ar_ha,mx_grw_ha,mx_grw_pct)) %>%
+ mutate(ig_date = as.Date(ig_date),
+        last_date = as.Date(last_date),
+        mx_grw_dte = as.Date(mx_grw_dte))
+
+# Bind back to the ICS-FIRED
+ics.fired <- ics.fired %>% bind_rows(addin)
+
+rm(addin.fired,addin,fired.fast.qc)
+```
+
+
 ```{r include=F}
+# Load the QC FIRED (matches the ICS-FIRED version):
+fired.fast.qc <- st_read("../../data/spatial/mod/conus_fast-fires_qc_2001to2020.gpkg") %>%
+ rename(FIRED_ID = id) %>%
+ select(FIRED_ID,bupr_sum,bupr_sum1km,bupr_sum4km,lc_name,lc_description) %>%
+ st_set_geometry(NULL) %>% as_tibble()
+
 # Get the top 100 fastest fires in ICS-FIRED
 ics.fired.t100 <- ics.fired %>%
  filter(STUSPS != 'AK') %>%
+ # WITCH is in the new WITCH-POOMACHA record
+ filter(INCIDENT_NAME != "WITCH") %>% 
  mutate(mx_grw_ha = mx_grw_km2*100,
         tot_ar_ha = tot_ar_km2*100,
         mx_grw_pct = (mx_grw_ha / tot_ar_ha)*100) %>%
@@ -133,18 +171,14 @@ ics.fired.t100 <- ics.fired %>%
 # Write to GeoPackage
 st_write(ics.fired.t100, "../../data/spatial/mod/fastest100_ics-fired.gpkg", delete_dsn=T)
 
-# Load the QC FIRED (matches the ICS-FIRED version):
-fired.fast.qc <- st_read("../../data/spatial/mod/conus_fast-fires_qc_2001to2020.gpkg") %>%
- rename(FIRED_ID = id) %>%
- select(FIRED_ID,bupr_sum,bupr_sum1km,bupr_sum4km,lc_name,lc_description) %>%
- st_set_geometry(NULL) %>% as_tibble()
-
 # Set up the cleaned table, attaching BUPR and MCD12Q1
 ics.fired.t100 <- ics.fired.t100 %>%
  left_join(., fired.fast.qc, by="FIRED_ID") %>%
  # Manually fix some missing data (unsure why)
  mutate(lc_name = if_else(INCIDENT_NAME == "LNU LIGHTNING COMPLEX", "Grasslands", lc_name),
-        bupr_sum4km = if_else(INCIDENT_NAME == "LNU LIGHTNING COMPLEX", 34344, bupr_sum4km))
+        bupr_sum4km = if_else(INCIDENT_NAME == "LNU LIGHTNING COMPLEX", 34344, bupr_sum4km)) %>%
+ # Convert all fire names to capitol letters
+ mutate(INCIDENT_NAME = toupper(INCIDENT_NAME))
 
 # Clean up the table
 cleaned.t100 <- ics.fired.t100 %>%
@@ -155,6 +189,23 @@ cleaned.t100 <- ics.fired.t100 %>%
 
 # Write out the top 100 to a CSV
 rm(fired.fast.qc)
+```
+
+Check how many fires are not matched between FIRED and ICS-FIRED:
+
+```{r}
+fired.fast.qc <- st_read("../../data/spatial/mod/conus_fast-fires_qc_2001to2020.gpkg")
+dim(fired.fast.qc %>% filter(id %in% ics.fired.t100$FIRED_ID))
+rm(fired.fast.qc)
+```
+
+Get some statistics for the table captions:
+
+```{r}
+paste0("Suppression costs for top 100: ",prettyNum(sum(ics.fired.t100$PROJECTED_FINAL_IM_COST,na.rm=T),big.mark=",",scientific=F))
+paste0("Exposed properties (within 4km): ",prettyNum(sum(ics.fired.t100$bupr_sum4km,na.rm=T),big.mark=",",scientific=F))
+paste0("Destroyed structures: ",prettyNum(sum(ics.fired.t100$STR_DESTROYED_TOTAL,na.rm=T),big.mark=",",scientific=F))
+summary(factor(ics.fired.t100$lc_name))
 ```
 
 Table 1: Top 20 fastest fires (CONUS)
@@ -349,7 +400,7 @@ rm(ics.t,ics.t.a,qc_list,incid_list,fired.t100,ics.fired.t100)
 gc()
 ```
 
-Figure 2. Case study, selection of fast fires from the top 100 with ZTRAX point locations and daily burned area.
+Figure 1B-D. Case studies - selection of fast fires from the top 100 with ZTRAX point locations and daily burned area.
 
 Load the ZTRAX point data and the list of fire boundaries (using MTBS):
 
@@ -368,6 +419,12 @@ Load the ZTRAX point data and the list of fire boundaries (using MTBS):
 #   "NV4152811742720180705",
 #   # Cedar Fire, CA (2003)
 #   "CA3293911676620031025"))
+```
+
+Load the HISDAC-US BUPR points:
+
+```{r}
+
 ```
 
 NW Oklahoma Complex, OK/KS (2017):
@@ -390,8 +447,8 @@ fire <- mtbs %>%
   filter(Event_ID %in% c("OK3671009983720170307","OK3677410017520170307")) %>%
   st_transform(st_crs(lambert.prj))
 
-# ZTRAX point locations
-points <- ztrax %>% 
+# HISDAC-US points
+points <- hisdac %>% 
   filter(YearBuilt <= 2017) %>%
   st_intersection(., fire%>%st_buffer(1000)) %>%
   st_transform(st_crs(lambert.prj))

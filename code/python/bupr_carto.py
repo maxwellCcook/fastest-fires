@@ -1,67 +1,53 @@
 
 """
-Build a database of points using the BUPR grids
-For Figure 1 to replace the ztrax points
+Convert HISDAC-US BUPR to cartographic points based on pixel value
 """
 
-import os, glob
+import os
+import numpy as np
 import rioxarray as rxr
 import geopandas as gpd
 from shapely.geometry import Point
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 
-
-# Functions
-
-def generate_random_points(pixel_value, pixel_size):
-    # Generate random points within a pixel, with count equal to pixel_value
-    rand_pts = [Point(np.random.rand() * pixel_size, np.random.rand() * pixel_size) for _ in range(pixel_value)]
-    return gpd.GeoDataFrame(geometry=rand_pts)
-
-
-# Load the data
+# Directories
 maindir = '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/'
-buprdir = os.path.join(maindir,'data/hisdac_us/BUPR')
-grids = glob.glob(buprdir+"/*.tif", recursive=True)
-# Open one to get the projection information
-img = rxr.open_rasterio(grids[0], masked=True)  # open the image for its CRS
-print(img.rio.crs.to_proj4())
-# Read in the fastest FIRED
-fired = gpd.read_file(
-    os.path.join(maindir,'earth-lab/fastest-fires/data/spatial/mod/conus_fast-fires_2001to2020.gpkg'))
-fired_clip = fired.to_crs(crs=img.rio.crs.to_proj4())
-# Plot to double check
-fired_clip.plot()
-plt.show()
+projdir = os.path.join(maindir,'earth-lab/fastest-fires/data/')
 
-# Loop through HISDAC-US BUPR, clip to FIRED perims, convert to points for non-zero pixels
+# Load the GeoTIFF raster file
+bupr_path = os.path.join(maindir,'data/hisdac_us/BUPR/contemp/BUPR_contemporary.tif')
+bupr_grid = rxr.open_rasterio(bupr_path, masked=True, cache=False).squeeze()
+proj = bupr_grid.rio.crs  # grab the projection information
 
-for grid in grids:
-    print(f"Starting for grid: {grid}")
-    # Grab a naming convention
-    name = os.path.basename(grid)[:-4]
-    # Open the raster
-    img = rxr.open_rasterio(grid, masked=True, cache=False).squeeze()
-    img.plot()
-    clipped = img.rio.clip(fired_clip)
-    # Create an empty GeoDataFrame to store the random points
-    random_points_gdf = gpd.GeoDataFrame(columns=['geometry'])
-    # Iterate through each pixel and generate random points
-    for y in range(clipped.rio.height):
-        print(clipped.rio.height)
-        for x in range(clipped.rio.width):
-            pval = clipped.values[y][x]
-            psize = 250  # Adjust based on your specific pixel size
-            if pval > 0:
-                random_points = generate_random_points(pval, psize)
-                # Save random points within the pixel
-                random_points_gdf = pd.concat([random_points_gdf, random_points])
-    # Save the random points as a GeoPackage
-    output_random_points_path = os.path.join(
-        maindir,f'earth-lab/fastest-fires/data/spatial/mod/{name}_points.gpkg',
-    )
-    random_points_gdf.to_file(output_random_points_path, driver="GPKG")
-    print("Random points saved to:", output_random_points_path)
+# Load the polygon boundaries
+gdf_path = os.path.join(projdir,'spatial/mod/mtbs_case_study_perims.gpkg')
+gdf = gpd.read_file(gdf_path).to_crs(proj)
 
+# Check the CRS does match
+if gdf.crs == bupr_grid.rio.crs:
+    print("CRS matches")
+
+    # Clip the raster layer
+    clipped = bupr_grid.rio.clip(gdf.geometry)
+
+    # Extract pixel values as a NumPy array
+    vals = clipped.values.squeeze()
+
+    # Get the coordinates (lon, lat) of each pixel
+    lon, lat = np.meshgrid(clipped.x.values, clipped.y.values)
+
+    # Generate random points based on pixel values
+    random_points = []
+    for value, x, y in zip(vals.flat, lon.flat, lat.flat):
+        if value > 0:
+            num_random_points = int(value)  # Generate points based on pixel value
+            random_lon = np.random.uniform(x, x + 250, size=(num_random_points,))
+            random_lat = np.random.uniform(y, y - 250, size=(num_random_points,))
+            geometries = [Point(lon, lat) for lon, lat in zip(random_lon, random_lat)]
+            random_points.extend(geometries)
+
+    # Create a GeoDataFrame with the random points
+    gdff = gpd.GeoDataFrame(geometry=random_points, crs=clipped.rio.crs)
+
+    # Optionally, save the GeoDataFrame to a shapefile
+    output_shapefile = os.path.join(projdir,'spatial/mod/hisdac/bupr_random_points_case_study.gpkg')
+    gdff.to_file(output_shapefile)
