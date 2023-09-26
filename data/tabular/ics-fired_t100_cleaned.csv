@@ -1,4 +1,4 @@
-Incident Name,Year,State,Fire Size (ha),Max Fire Growth (ha / day),Fire Duration (days),Cost ($),Properties Exposed (within 4km),Structures Destroyed,Total Aerial Units,Total Personnel,Dominant Vegetation
+Incident Name,Year,State,Fire Size (ha),Maximum Fire Growth (ha / day),Fire Duration (days),Cost ($),Properties Exposed (within 4km),Structures Destroyed,Total Aerial Units,Total Personnel,Dominant Vegetation
 NW OKLAHOMA COMPLEX,2017,OK,315369,214208,16,3200000,1647,151,2,955,Grasslands
 LONG DRAW,2012,OR,225664,129911,14,4360000,2,0,49,4237,Grasslands
 COLD SPRINGS COMPLEX,2020,WA,218969,102199,33,11459351,5153,288,34,4327,Grasslands

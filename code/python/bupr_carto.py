@@ -32,16 +32,20 @@ if gdf.crs == bupr_grid.rio.crs:
     # Extract pixel values as a NumPy array
     vals = clipped.values.squeeze()
 
-    # Get the coordinates (lon, lat) of each pixel
-    lon, lat = np.meshgrid(clipped.x.values, clipped.y.values)
+    res = 250
+
+    lon, lat = np.meshgrid(
+        clipped.x.values - res / 2,  # Adjust for pixel center
+        clipped.y.values + res / 2  # Adjust for pixel center
+    )
 
     # Generate random points based on pixel values
     random_points = []
     for value, x, y in zip(vals.flat, lon.flat, lat.flat):
         if value > 0:
             num_random_points = int(value)  # Generate points based on pixel value
-            random_lon = np.random.uniform(x, x + 250, size=(num_random_points,))
-            random_lat = np.random.uniform(y, y - 250, size=(num_random_points,))
+            random_lon = np.random.uniform(x, x + res, size=(num_random_points,))
+            random_lat = np.random.uniform(y, y - res, size=(num_random_points,))
             geometries = [Point(lon, lat) for lon, lat in zip(random_lon, random_lat)]
             random_points.extend(geometries)
 
