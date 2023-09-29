@@ -445,7 +445,8 @@ p1 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
  geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
  geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
  coord_sf() +
- labs(fill="Days Since Ignition", tag=expression(bold("(B)"))) +
+ # , tag=expression(bold("(B)"))
+ labs(fill="Days Since Ignition") +
  theme_void() +
  theme(legend.position="none",
        plot.title = element_text(hjust = 0.5),
@@ -521,7 +522,8 @@ p2 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
  geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
  geom_sf(data=points, color=alpha("black",0.8), size=0.85, shape=18) +
  coord_sf() +
- labs(fill="Days Since Ignition", tag=expression(bold("C"))) +
+ # , tag=expression(bold("C"))
+ labs(fill="Days Since Ignition") +
  theme_void() +
  theme(legend.position="none",
        plot.title = element_text(hjust = 0.5),
@@ -543,7 +545,7 @@ gc()
 
 # Save the image
 ggsave(p2, file = "../../figures/FigureX_ColdSpringsFire.png",
-       dpi = 300, bg="transparent") # adjust dpi accordingly
+       width=3.5, height=3.5, dpi = 300, bg="transparent") # adjust dpi accordingly
 
 ```
 
@@ -600,7 +602,8 @@ p3 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
  geom_sf(data=fire, fill="transparent", color="gray30", lwd=0.45) +
  geom_sf(data=points, color=alpha("black",0.45), size=0.65, shape=18) +
  coord_sf() +
- labs(fill="Days Since Ignition", tag=expression(bold("D"))) +
+ # , tag=expression(bold("D"))
+ labs(fill="Days Since Ignition") +
  theme_void() +
  theme(legend.position="none",
        plot.title = element_text(hjust = 0.5),
@@ -611,11 +614,11 @@ p3 <- mcd64 %>% as.data.frame(xy = TRUE) %>% mutate(
  #                               barwidth = 12, barheight = 0.5,
  #                               ticks=FALSE, draw.llim=FALSE)) +
  ggspatial::annotation_scale(location = "br", width_hint = 0.1,
-                             pad_x = unit(0.1,"in"), pad_y = unit(0.2,"in"),
+                             pad_x = unit(0.1,"in"), pad_y = unit(0.15,"in"),
                              line_width = 0.5, text_pad = unit(0.15,"cm"),
                              height = unit(0.15,"cm")) +
  ggspatial::annotation_north_arrow(location = "br", which_north = "true",
-                                   pad_x = unit(0.1,"in"), pad_y= unit(0.3,"in"),
+                                   pad_x = unit(0.1,"in"), pad_y= unit(0.25,"in"),
                                    width = unit(0.8,"cm"), height = unit(0.8,"cm"),
                                    style = north_arrow_fancy_orienteering)
 p3
