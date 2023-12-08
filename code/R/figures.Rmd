@@ -91,6 +91,53 @@ paste0("Percent of Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T)/sum(ics$INJU
 st_write(ics.fast, "../../data/spatial/mod/ics209plus_conus_fast_2000to2020.gpkg", delete_dsn=T)
 ```
 
+Look at distribution of fire size and speed for events which destroyed structures.
+
+```{r}
+# STUSPS for 11 Western US states
+west <- c("AZ", "CO", "NV", "WY", "CA", "ID", "WA", "OR", "NM", "MT", "UT")
+df <- ics %>% 
+ mutate(loss = if_else(STR_DESTROYED_RES_TOTAL > 0 | STR_DAMAGED_RES_TOTAL > 0, "Loss", "No Loss"),
+        region = if_else(STUSPS %in% west, "West", "East")) %>%
+ filter(FINAL_ACRES > 1) 
+
+stats <- df %>%
+ st_set_geometry(NULL) %>%
+ group_by(region, loss) %>%
+ summarize(
+  count = n(),
+  fire_size_mn = mean(FINAL_ACRES),
+  fire_size_md = median(FINAL_ACRES),
+  fire_size_mx = max(FINAL_ACRES)
+ ) %>%
+ ungroup()
+
+# Set font name for table
+fontname <- "Times New Roman"
+# Fix names and add units
+names(stats) <- c(
+ "Region","Structure Loss/Damage","Number of Fires", "Mean Fire Size (acres)",
+ "Median Fire Size (acres)","Maximum Fire Size (acres)")
+# Create the flextable
+ft <- flextable(stats) %>%
+ font(fontname = fontname, part = "all") %>%
+ autofit() %>% 
+ fit_to_width(7.5)
+ft
+print(ft, preview = "docx")
+
+# Plot the histogram of fire size by whether the fire destroyed structures
+ggplot(data=df, aes(x=FINAL_ACRES, fill=factor(region))) +
+ geom_histogram(position="dodge", bins=50) +
+ facet_wrap(~loss) +
+ scale_x_continuous(trans = "log10", labels = label_number(suffix = " K", scale = 1e-3, accuracy = 1)) +
+ labs(fill="U.S. Region", y="Count", x="log(Fire Size (acres))") +
+ theme_light()
+
+rm(df, stats, fontname, ft)
+
+```
+
 Subset FIRED events to fast fires (max daily growth > 1620ha). Exclude cropland systems.
 
 ```{r include=F}
