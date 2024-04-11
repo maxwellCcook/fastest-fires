@@ -14,10 +14,12 @@ First, we need to handle possible multiple entries due to the reporting nature f
 
 ```{r}
 icsdir <- '/Users/max/Library/CloudStorage/OneDrive-Personal/mcook/ics209-plus-fired/data/'
+
 # Load the complex associations table
 complex.df <- suppressMessages(
  read_csv(paste0(
-  icsdir,"tabular/raw/wf-incidents/ics209-plus_v2.0/ics209plus-wildfire/ics209-plus-wf_complex_associations_1999to2020.csv"
+  icsdir,
+  "tabular/raw/wf-incidents/ics209-plus_v2/ics209plus-wildfire/ics209-plus-wf_complex_associations_1999to2020.csv"
  ), show_col_types = FALSE)
 )
 
@@ -144,6 +146,7 @@ Subset FIRED events to fast fires (max daily growth > 1620ha). Exclude cropland 
 # Load the BUPR summaries
 bupr <- read_csv("../../data/tabular/bupr_sums.csv",show_col_types = FALSE) %>%
  dplyr::select(id,bupr_sum,bupr_sum1km,bupr_sum4km)
+glimpse(bupr)
 
 # Remove fired that occurred predominantly in cropland landcover
 fired.fast <- fired %>% 
@@ -194,6 +197,19 @@ addin <- ics %>%
 ics.fired <- ics.fired %>% bind_rows(addin)
 
 rm(addin.fired,addin,fired.fast.qc)
+
+glimpse(ics.fired)
+
+# Subset to fast fires
+ics.fired.fast <- ics.fired %>% 
+ filter(STUSPS != 'AK') %>%
+ # WITCH is in the new WITCH-POOMACHA record
+ filter(INCIDENT_NAME != "WITCH") %>% 
+ mutate(mx_grw_ha = mx_grw_km2*100,
+        tot_ar_ha = tot_ar_km2*100,
+        mx_grw_pct = (mx_grw_ha / tot_ar_ha)*100) %>%
+ filter(mx_grw_ha >= 1620)
+st_write(ics.fired.fast, "../../data/spatial/mod/ics-fired_fast_2001to2020.gpkg")
 ```
 
 

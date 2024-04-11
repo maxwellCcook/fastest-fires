@@ -1,0 +1,759 @@
+---
+title: "fast-fires-explore"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("setup.R")
+```
+
+```{r echo=F, message=F, warning=F, error=F, include=F}
+#########Bring in the data
+setwd("C:/Users/mccoo/OneDrive/mcook/fast-fires/")
+incidir <- "C:/Users/mccoo/OneDrive/mcook/thesis/data/"
+datadir <- "C:/Users/mccoo/OneDrive/mcook/data/"
+
+###ICS-209-PLUS table 1999-2018
+inci209 <- read.csv(paste(incidir, "data_raw/tables/ics209-plus-wf_incidents_1999to2018.csv", sep=""))
+
+###BUPR summary for events
+events <- st_read("data/events/event_polys_albers_conus_w_eco_lc_bupr_proj.gpkg") 
+events <- events %>%
+   mutate(ignition_date = as.Date(ignition_date, "%Y-%m-%d"),
+          last_date = as.Date(last_date, "%Y-%m-%d"),
+          max_growth_date = as.Date(max_growth_date, "%Y-%m-%d"))
+   
+# daily <- st_read(
+#    paste(data,
+#          "FIRED/data/2020/edit/final/daily_polys_albers_conus_w_eco_lc.gpkg", sep="")) %>%
+#    mutate(date = as.Date(date, "%Y-%m-%d"),
+#           ignition_date = as.Date(ignition_date, "%Y-%m-%d"),
+#           last_date = as.Date(last_date, "%Y-%m-%d"),
+#           max_growth_date = as.Date(max_growth_date, "%Y-%m-%d"))
+
+###Bring in the linked dataset
+ics.fired <- st_read(
+ paste(
+  incidir, "data_mod/joins/new/event_polys_inci209_linked_2001to2018.gpkg", sep=""))
+
+###Bring in the NIFC perims
+nifc <- st_read("data/nifc/public_nifc_perims.gpkg")
+
+###Bring in MTBS perims
+mtbs <- st_read(paste(datadir, "mtbs/mtbs_perims_DD/mtbs_perims_DD.gpkg", sep="")) %>% mutate(
+  Incid_Year = lubridate::year(Ig_Date)
+) %>% filter(Incid_Year>=2000 & Incid_Year<=2020)
+
+##Bring in CONUS shape
+conus <- st_read(paste(datadir, "boundaries/political/TIGER/tl_2019_conus_state_albers.gpkg", sep=""))
+
+###Bring in the ztrax
+ztrax <- st_read("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/ztrax/extract/zasmt_fast_fires_extract.shp")%>%
+   st_transform(st_crs(mtbs))
+
+```
+
+# First look at fast fires in ICS-209-PLUS only
+
+```{r}
+######Observed fast fires break and number of homes threatened, damaged, destroyed
+ffInci <- inci209 %>% mutate(WF_MAX_FSR_HA = WF_MAX_FSR*0.404686) %>% filter(
+ WF_MAX_FSR_HA >= 1620
+)
+
+ffTemp <- ff%>%filter(!is.na(STR_THREATENED_MAX))
+inciTemp <- inci209%>%filter(!is.na(STR_THREATENED_MAX))
+
+###Summarize number of threatened, damaged, destroyed structures by fast fires
+paste("Total Structures Threatened: ", comma(sum(ffTemp$STR_THREATENED_MAX)), sep="")
+paste("Total Structures Damaged: ", comma(sum(ff$STR_DAMAGED_TOTAL)), sep="")
+paste("Total Structures Destroyed: ", comma(sum(ff$STR_DESTROYED_TOTAL)), sep="")
+###Percent of homes threatened, damaged, destroyed
+paste("Percent of Structures Threatened: ",
+      sum(ffTemp$STR_THREATENED_MAX)/sum(inciTemp$STR_THREATENED_MAX)*100,
+      sep="")
+paste("Percent of Structures Damaged: ", 
+      sum(ff$STR_DAMAGED_TOTAL)/sum(inci209$STR_DAMAGED_TOTAL)*100,
+      sep="")
+paste("Percent of Structures Destroyed: ", 
+      sum(ff$STR_DESTROYED_TOTAL)/sum(inci209$STR_DESTROYED_TOTAL)*100,
+      sep="")
+#####Create subset of non-null suppression costs
+ffTemp <- ff %>% filter(!is.na(PROJECTED_FINAL_IM_COST))
+paste("Total Suppression Costs: ",
+      comma(sum(ffTemp$PROJECTED_FINAL_IM_COST)), sep="")
+```
+
+
+# Next, summarize within the linked 209s-FIRED data
+
+```{r}
+setwd("C:/Users/mccoo/OneDrive/mcook/thesis/")
+link <- st_read("data/data_mod/joins/new/event_polys_inci209_linked_2001to2018.gpkg")
+
+link <- link %>% mutate(
+   #Set factors for cause
+   CAUSE = as.factor(CAUSE),
+   FOD_CAUSE = as.factor(FOD_CAUSE),
+   FOD_CAUSE_NUM = as.factor(FOD_CAUSE_NUM),
+   max_growth_ha = max_growth_km2*100
+)
+
+summary(link$CAUSE)
+
+link_fast <- link %>% filter(max_growth_ha>=1620)
+
+summary(link_fast$CAUSE)
+```
+
+
+# Subset to fast fires (max daily growth > 1620ha)
+
+```{r}
+###Remove events that occurred prodominantly in cropland landcover
+events <- events %>% filter(lc_name != "Croplands")
+
+###Isolate fast fires
+ffEvt <- events %>% mutate(max_growth_ha = max_growth_km2*100) %>% filter(max_growth_ha >= 1620)
+
+###Get the top 100 fastest fires
+ffEvt_top100 <- top_n(ffEvt, 100, max_growth_ha)
+#And for the linked 209-FIRED data
+ffEvt_linked <- ics.fired %>% filter(id %in% ffEvt$id)
+#And see which of the top 100 have a link
+ffEvt_linked100 <- ics.fired %>% filter(id %in% ffEvt_top100$id)
+###Write out the top 100 events
+# st_write(ffEvt_top100, "C:/Users/mccoo/OneDrive/mcook/fast-fires/data/fired_events_top100_fastest.gpkg")
+# st_write(top100_link, "C:/Users/mccoo/OneDrive/mcook/fast-fires/data/fired_events_LINKED_top100_fastest.gpkg")
+
+##################################################################
+###Print some statistics of the fast fires subset
+print("~~~~~~~~~~~BURNED AREA~~~~~~~~~~~~~")
+summary(ffEvt_top100$max_growth_km2)
+paste("% of total burned area: ",
+      sum(ffEvt$total_area_km2)/sum(events$total_area_km2)*100, sep="")
+print("~~~~~~~~~~~BUPR~~~~~~~~~~~~~")
+paste("Number of exposed properties: ", sum(ffEvt$bupr_sum), sep="")
+paste("Number of exposed properties 1km: ", sum(ffEvt$bupr_sum_1km), sep="")
+paste("Number of exposed properties 4km: ", sum(ffEvt$bupr_sum_4km), sep="")
+###Compare with total BUPR
+paste("% of total BUPR in perimeters: ",
+      sum(ffEvt$bupr_sum)/sum(events$bupr_sum)*100, sep="")
+paste("% of total BUPR within 1km: ",
+      sum(ffEvt$bupr_sum_1km)/sum(events$bupr_sum_1km)*100, sep="")
+
+###Spatial map of top 100
+ggplot()+
+   geom_sf(data=conus)+
+   geom_sf(data=ffEvt_top100)
+```
+
+# Daily Growth Plots
+
+```{r}
+###MTBS
+hayman_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CO3922010528720020608')
+
+###FIRED
+hayman_fire_evt <- events %>% filter(id==6161)
+
+###Grab some info for the plot
+burn_year <- '2002'
+ignition_date <- hayman_fire_evt$ignition_date
+igngition_day <- hayman_fire_evt$ignition_day
+
+###Get the annual burn date raster
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", burn_year, "/", sep="")
+
+###Find ranges and set up plot
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', burn_year, '.tif', sep=""))) %>%
+   raster::crop(hayman_fire_mtbs) %>%
+   raster::mask(hayman_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+start <- as.numeric(range[1])
+breaks <- abs(range[1]-range[2])
+
+#Update raster values to get "day since ignition"
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+hayman_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Hayman Fire, CO, 2002',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                     colorkey = list(col = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(hayman_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE))) +
+  latticeExtra::layer(sp.points(as(ztrax_ext, 'Spatial'), pch = 16, size = 1, col = 'black'))
+
+hayman_fire_map
+```
+
+```{r}
+###MTBS
+hayman_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CO3922010528720020608')
+###Filter the ztrax
+ztrax_ext <- ztrax %>% filter(YearBuilt<=2002) %>%
+   st_intersection(., hayman_fire_mtbs)
+###########GGPLOT2 version
+###Grab some info for the plot
+burn_year <- '2002'
+ignition_date <- hayman_fire_evt$ignition_date
+igngition_day <- hayman_fire_evt$ignition_day
+
+###Get the annual burn date raster
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", burn_year, "/", sep="")
+
+###Find ranges and set up plot
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', burn_year, '.tif', sep=""))) %>%
+   raster::crop(hayman_fire_mtbs) %>%
+   raster::mask(hayman_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+start <- as.numeric(range[1])
+breaks <- abs(range[1]-range[2])
+
+#Update raster values to get "day since ignition"
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+#Extract as DF
+modis_burn_dates <- as.data.frame(modis_burn_dates, xy = TRUE)
+#Plot
+ggplot() +
+   geom_raster(data = modis_burn_dates , aes(x = x, y = y, fill=annual_burndate_y2002)) +
+   scico::scale_fill_scico(palette = "lajolla", na.value="white",
+                           breaks=seq(0,35,5), labels=c(0,5,10,15,20,25,30,35))+
+   geom_sf(data=hayman_fire_mtbs, fill="transparent", size=0.65)+
+   geom_sf(data=ztrax_ext, color="black", size=1)+
+   labs(title="Hayman Fire, CO (2002)",
+        fill="Days Since Ignition")+
+   theme_void()+
+   theme(legend.position="bottom",
+         plot.title = element_text(hjust = 0.5))+
+   guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5,
+                                 barwidth = 12, barheight = 0.5,
+                                 ticks=FALSE, draw.llim=FALSE))+
+   coord_sf()
+```
+
+
+```{r}
+###ZTRAX
+ztrax_ext <- ztrax %>% filter(YearBuilt<=2017)
+
+###MTBS
+tubbs_fire_mtbs <- mtbs %>%
+  filter(Event_ID == 'CA3859812261820171009')
+
+#FIRED
+tubbs_fire_evt <- events %>% filter(id==117157)
+
+###Params
+year <- '2017'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+###Tubbs fire example
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+  raster::crop(tubbs_fire_mtbs) %>%
+  raster::mask(tubbs_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+start <- range[1]
+breaks <- abs(range[1]-range[2])
+
+#Update cells to be "days since ignition
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+tubbs_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Tubbs Fire, CA, 2017',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                     colorkey = list(col = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(tubbs_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE))) +
+  latticeExtra::layer(sp.points(as(ztrax_ext, 'Spatial'), pch = 16, size = 1, col = 'black'))
+
+tubbs_fire_map
+```
+
+```{r}
+camp_fire <- inci209 %>%
+  filter(INCIDENT_ID == "2018_9220077_CAMP")
+# Create the spatial
+camp_fire_pt <- camp_fire %>%
+  mutate(POO_LONGITUDE = ifelse(is.na(POO_LONGITUDE),0,as.numeric(POO_LONGITUDE)),
+         POO_LATITUDE = ifelse(is.na(POO_LATITUDE),0,as.numeric(POO_LATITUDE))) %>%
+  st_as_sf(., coords = c("POO_LONGITUDE", "POO_LATITUDE"),
+                       crs = st_crs(conus)) %>%
+  st_transform(crs = st_crs(conus))
+
+#FIRED
+camp_fire_evt <- events%>%filter(id==124486)
+ignition_date <- camp_fire_evt$ignition_date
+last_date <- camp_fire_evt$last_date
+
+#MTBS
+camp_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CA3982012144020181108')
+   
+year <- '2018'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(camp_fire_mtbs) %>%
+   raster::mask(camp_fire_mtbs)
+plot(modis_burn_dates)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+end <- as.numeric(range[2])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+##Handle possible error dates
+modis_burn_dates[modis_burn_dates>31] <- NA
+
+# A function to plot our raster data
+camp_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Camp Fire, CA, 2018',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                     colorkey = list(col = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(camp_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+camp_fire_map
+```
+
+```{r}
+#FIRED
+woolsey_fire_evt <- events%>%filter(id==124525)
+ignition_date <- camp_fire_evt$ignition_date
+last_date <- camp_fire_evt$last_date
+
+#MTBS
+woolsey_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CA3424011870020181108')
+   
+year <- '2018'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(woolsey_fire_mtbs) %>%
+   raster::mask(woolsey_fire_mtbs)
+plot(modis_burn_dates)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+end <- as.numeric(range[2])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+##Handle possible error dates
+# modis_burn_dates[modis_burn_dates>31] <- NA
+
+# A function to plot our raster data
+woolsey_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Woolsey Fire, CA, 2018',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                     colorkey = list(col = colorRampPalette(brewer.pal(11, 'YlOrRd'))(breaks),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(woolsey_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+woolsey_fire_map
+```
+
+```{r}
+oks_fire <- inci209 %>%
+  filter(INCIDENT_ID == "2017_7145623_OKS - STARBUCK")
+# Create the spatial
+oks_fire_pt <- oks_fire %>%
+  mutate(POO_LONGITUDE = ifelse(is.na(POO_LONGITUDE),0,as.numeric(POO_LONGITUDE)),
+         POO_LATITUDE = ifelse(is.na(POO_LATITUDE),0,as.numeric(POO_LATITUDE))) %>%
+  st_as_sf(., coords = c("POO_LONGITUDE", "POO_LATITUDE"),
+                       crs = st_crs(conus)) %>%
+  st_transform(crs = st_crs(conus))
+
+oks_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'OK3677410017520170307')
+
+#FIRED
+oks_fire_evt <- events%>%filter(id==112198)
+
+year <- '2017'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+###Hayman fire example
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(oks_fire_mtbs) %>%
+   raster::mask(oks_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+oks_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'OKS-Starbuck, OK, 2017',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(oks_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+oks_fire_map
+```
+
+```{r}
+king_fire <- inci209 %>%
+  filter(INCIDENT_ID == "2014_983669_KING")
+# Create the spatial
+king_fire_pt <- oks_fire %>%
+  mutate(POO_LONGITUDE = ifelse(is.na(POO_LONGITUDE),0,as.numeric(POO_LONGITUDE)),
+         POO_LATITUDE = ifelse(is.na(POO_LATITUDE),0,as.numeric(POO_LATITUDE))) %>%
+  st_as_sf(., coords = c("POO_LONGITUDE", "POO_LATITUDE"),
+                       crs = st_crs(conus)) %>%
+  st_transform(crs = st_crs(conus))
+
+king_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CA3878212060420140913')
+
+#FIRED
+king_fire_evt <- events%>%filter(id==95950)
+
+year <- '2014'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+###Hayman fire example
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(king_fire_mtbs) %>%
+   raster::mask(king_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+king_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'King Fire, CA, 2014',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(king_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+king_fire_map
+```
+
+```{r}
+witch_fire_mtbs <- mtbs %>%
+   filter(Event_ID == 'CA3307911676620071021')
+
+dissolve <- st_union(witch_fire_mtbs)%>%st_sf()
+
+#FIRED
+witch_fire_evt <- events%>%filter(id==46183)
+
+year <- '2007'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+###Hayman fire example
+# proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=1,1,-1,0,0,0,0 +units=m +no_defs"
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(witch_fire_mtbs) %>%
+   raster::mask(witch_fire_mtbs)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+witch_fire_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Witch-Poomacha Fire, CA, 2007',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(witch_fire_mtbs, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+witch_fire_map
+```
+
+
+```{r}
+cold_springs_cmplx <- nifc %>%
+   filter(LocalIncid == "000594" |
+          LocalIncid == "200130" |
+          LocalIncid == "002144") %>%
+   st_transform(crs = st_crs(mtbs))
+
+dissolve <- st_union(cold_springs_cmplx)%>%st_sf()
+
+year <- '2020'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(dissolve) %>%
+   raster::mask(dissolve)
+plot(modis_burn_dates)
+
+modis_burn_dates[modis_burn_dates<245] <- NA
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+
+# A function to plot our raster data
+cold_springs_cmplx_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Ignition', cex = 1.5), 
+                     main = 'Cold Springs Complex, WA, 2020',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd'))(breaks),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd'))(breaks),
+                                     space="bottom")) +
+  latticeExtra::layer(sp.polygons(as(cold_springs_cmplx, 'Spatial'), lwd = 1, scales=list(axes=FALSE)))
+
+cold_springs_cmplx_map
+```
+
+```{r}
+claremont_bear <- nifc %>%
+   filter(LocalIncid == "001308") %>%
+   st_transform(crs = st_crs(mtbs))
+
+year <- '2020'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(claremont_bear) %>%
+   raster::mask(claremont_bear)
+
+##Handle possible error dates
+modis_burn_dates[modis_burn_dates>279] <- NA
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+
+# A function to plot our raster data
+claremont_bear_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Igntiion', cex = 1.5), 
+                     main = 'Claremont-Bear, CA, 2020',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                                     space="bottom")) +
+   latticeExtra::layer(sp.polygons(as(claremont_bear, 'Spatial'), lwd = 1, scales=list(axes=TRUE))) 
+
+claremont_bear_map
+
+```
+
+```{r}
+august_cmplx <- nifc %>%
+   filter(LocalIncid == "000753") %>%
+   st_transform(crs = st_crs(mtbs))
+
+year <- '2020'
+fire_dir <- paste("C:/Users/mccoo/OneDrive/mcook/fast-fires/data/burndate/", year, "/", sep="")
+
+modis_burn_dates <- raster::raster(file.path(paste(fire_dir, 'annual_burndate_y', year, '.tif', sep=""))) %>%
+   raster::crop(august_cmplx) %>%
+   raster::mask(august_cmplx)
+
+#Grab the range of burn days
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+start <- as.numeric(range[1])
+
+modis_burn_dates <- modis_burn_dates - start
+range <- range(modis_burn_dates[],na.rm=TRUE)
+breaks <- abs(range[1]-range[2])
+
+# A function to plot our raster data
+august_cmplx_map <- rasterVis::levelplot(modis_burn_dates,
+                     par.settings = list(layout.heights=list(xlab.key.padding=1),
+                                         axis.line = list(col = "transparent"),
+                                         strip.background = list(col = 'transparent'),
+                                         strip.border = list(col = 'transparent')),
+                     margin=FALSE, region = TRUE,
+                     xlab = list(label = 'Days Since Igntiion', cex = 1.5), 
+                     main = 'August Complex, CA, 2020',
+                     scales = list(draw = FALSE),
+                     ylab=NULL,
+                     col.regions = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                     colorkey = list(col = colorRampPalette(brewer.pal(breaks, 'YlOrRd')),
+                                     space="bottom")) +
+   latticeExtra::layer(sp.polygons(as(august_cmplx, 'Spatial'), lwd = 1, scales=list(axes=TRUE))) 
+
+august_cmplx_map
+
+```
+
+```{r}
+###Merge the spatial data and save
+boundaries <- st_combine(camp_fire_mtbs, witch_fire_mtbs)
+```
+
+# Panel figure
+
+```{r, fig.width=10, fig.height=6, warning=False}
+grid.arrange(hayman_fire_map, witch_fire_map, oks_fire_map, 
+             camp_fire_map, august_cmplx_map, cold_springs_cmplx_map,
+             ncol=3, nrow=2)
+
+# library(latticeExtra)
+# c(camp_fire_map, hayman_fire_map, tubbs_fire_map, 
+#   oks_fire_map, cold_springs_cmplx_map, claremont_bear_map)
+
+# cowplot::plot_grid(camp_fire_map, hayman_fire_map, tubbs_fire_map, 
+#                    oks_fire_map, cold_springs_cmplx_map, claremont_bear_map,
+#                    align = "v", ncol = 3, rel_heights = c(1/4, 1/4, 1/4))
+```
+
+```{r, fig.width=10, fig.height=9, warning=False}
+grid.arrange(hayman_fire_map, witch_fire_map, oks_fire_map, 
+             tubbs_fire_map, camp_fire_map, woolsey_fire_map,
+             august_cmplx_map, cold_springs_cmplx_map, claremont_bear_map,
+             ncol=3, nrow=3)
+```
+
+# Plot BUPR sum through burn days
+
+## Here, we will test various methods for temporal autocorrelation between burn area and housing density. We will also test the relationship between maximum growth and maximum housing density.
+
+```{r, fig.caption="Test"}
+###Create daily fired subset
+#####Let's take an example fire, the Rim Fire in CA
+ex <- daily %>% filter(id==57206) %>%
+   #daily hectares
+   mutate(daily_area_ha = daily_area_km2*100)
+
+###Create a simple time-series plot
+p1 <- ggplot(ex)+
+   geom_line(aes(date, daily_area_km2), na.rm=TRUE)+
+   xlab("")+
+   ylab("Daily Growth (km2)")+
+   scale_x_date(breaks=date_breaks("5 days"),
+                labels=date_format("%b %d"))+
+   theme_light()
+p2 <- ggplot(ex, aes(date, bupr_sum))+
+   geom_bar(stat="identity")+
+   xlab("Burn Date")+
+   ylab("Built-up Property Records")+
+   scale_x_date(breaks=date_breaks("5 days"),
+                labels=date_format("%b %d"))+
+   theme_light()
+
+arr <- ggarrange(p1, p2, nrow = 2, ncol = 1)
+
+annotate_figure(arr, top="Daily Burn Area and Property Density for the Rim Fire, CA")
+
+```
+
