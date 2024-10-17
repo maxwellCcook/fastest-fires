@@ -94,6 +94,43 @@ paste0("Percent of Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T)/sum(ics$INJU
 st_write(ics.fast, "../../data/spatial/mod/ics209plus_conus_fast_2000to2020.gpkg", delete_dsn=T)
 ```
 
+Look at 2020 alone:
+
+```{r}
+ics.fast <- ics.fast %>% filter(START_YEAR == 2020)
+# Summarize number of threatened, damaged, destroyed structures by fast fires from the 209s
+print("ICS-209-PLUS 2020 Only Fast Fires, Structural Impacts: ")
+paste0("Total fast fires (N): ",dim(ics.fast)[1])
+print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+paste0("Total Structures Threatened: ", scales::comma(sum(ics.fast$STR_THREATENED_MAX, na.rm=TRUE)))
+paste0("Total Structures Damaged: ", scales::comma(sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=TRUE)))
+paste0("Total Structures Destroyed: ", scales::comma(sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=TRUE)))
+paste0("Total Residential Structures Destroyed: ",scales::comma(sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=TRUE)))
+print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+# Percent of homes threatened, damaged, destroyed
+paste0("Percent of Structures Threatened: ",
+      sum(ics.fast$STR_THREATENED_MAX, na.rm=T)/sum(ics$STR_THREATENED_MAX, na.rm=T)*100)
+paste0("Percent of Structures Damaged: ", 
+      sum(ics.fast$STR_DAMAGED_TOTAL, na.rm=T)/sum(ics$STR_DAMAGED_TOTAL, na.rm=T)*100)
+paste0("Percent of Structures Destroyed: ", 
+      sum(ics.fast$STR_DESTROYED_TOTAL, na.rm=T)/sum(ics$STR_DESTROYED_TOTAL, na.rm=T)*100)
+paste0("Percent of Residential Structures Destroyed: ", 
+      sum(ics.fast$STR_DESTROYED_RES_TOTAL, na.rm=T)/sum(ics$STR_DESTROYED_RES_TOTAL, na.rm=T)*100)
+print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+paste0("Total Suppression Costs: ",scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)))
+paste0("Percent of Suppression Costs: ",
+      scales::comma(sum(ics.fast$PROJECTED_FINAL_IM_COST, na.rm=T)/
+                     sum(ics$PROJECTED_FINAL_IM_COST, na.rm=T)*100))
+print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+paste0("Total Fatalities:",sum(ics.fast$FATALITIES,na.rm=T))
+paste0("Percent of Fatalities:",sum(ics.fast$FATALITIES,na.rm=T)/sum(ics$FATALITIES,na.rm=T)*100)
+paste0("Total Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T))
+paste0("Percent of Injuries: ",sum(ics.fast$INJURIES_TOTAL,na.rm=T)/sum(ics$INJURIES_TOTAL,na.rm=T)*100)
+
+paste0("Total Burned Area: ",sum(ics.fast$FINAL_ACRES,na.rm=T))
+paste0("Percent of Burned Area: ",sum(ics.fast$FINAL_ACRES,na.rm=T)/sum(ics$FINAL_ACRES,na.rm=T)*100)
+
+```
 Look at distribution of fire size and speed for events which destroyed structures.
 
 ```{r}
@@ -733,8 +770,8 @@ Create an inset map showing the fire locations:
 ```{r warning=F}
 # Gather the three fire perimeters from th4e case study:
 fireB <- fired.fast %>% filter(id %in% c(33409)) %>% st_centroid()
-fireC <- fired.fast %>% filter(id %in% c(46167)) %>% st_centroid()
-fireD <- mtbs %>% filter(Event_ID %in% c("WA4836011949320200907")) %>% st_centroid()
+fireC <- mtbs %>% filter(Event_ID %in% c("WA4836011949320200907")) %>% st_centroid()
+fireD <- fired.fast %>% filter(id %in% c(46167)) %>% st_centroid()
 fire_centroids <- rbind(
   data.frame(st_coordinates(fireB), label = "B"),
   data.frame(st_coordinates(fireC), label = "C"),
@@ -742,7 +779,7 @@ fire_centroids <- rbind(
 )
 
 # Convert to sf object for plotting
-fire_centroids.sf <- st_as_sf(fire_centroids, coords = c("X", "Y"), crs = st_crs(fireA))
+fire_centroids.sf <- st_as_sf(fire_centroids, coords = c("X", "Y"), crs = st_crs(fireB))
 
 # Create the inset map
 inset_map <- ggplot() +

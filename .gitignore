@@ -51,3 +51,4 @@ code/.ipynb_checkpoints/
 *.DS_Store
 *.idea/*
 *.qmd
+*rosm.cache*
