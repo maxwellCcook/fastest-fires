@@ -1,0 +1,28 @@
+---
+title: "fast-fires-stats.Rmd"
+output: html_document
+date: "2024-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+getwd()
+```
+
+```{r}
+# Load the ICS data
+ics <- read_csv('../../ics209-plus-fired/data/tabular/raw/wf-incidents/ics209-plus_v3.2/ics209-plus-wf_incidents_1999to2023.csv')
+```
+
+```{r}
+marshall <- ics %>% filter(INCIDENT_ID == '2021_14620013_MARSHALL')
+glimpse(marshall)
+```
+
+```{r}
+
+```
