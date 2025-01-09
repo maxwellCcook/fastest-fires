@@ -19,7 +19,7 @@ ics <- read_csv('../../ics209-plus-fired/data/tabular/raw/wf-incidents/ics209-pl
 ```
 
 ```{r}
-marshall <- ics %>% filter(INCIDENT_ID == '2021_14620013_MARSHALL')
+marshall <- ics %>% filter(INCIDENT_NAME == 'Lahaina')
 glimpse(marshall)
 ```
 

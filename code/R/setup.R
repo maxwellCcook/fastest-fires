@@ -55,7 +55,7 @@ ics.fired <- ics.fired %>%
 rm(og)
 
 # Bring in MTBS perims
-mtbs <- st_read(paste0(maindir,"/data/mtbs/mtbs_perimeter_data/mtbs_perims_conus.gpkg")) %>% 
+mtbs <- st_read(paste0(maindir,"/data/mtbs/mtbs_perimeter_data/mtbs_perims_DD.shp")) %>% 
  mutate(Incid_Year = lubridate::year(Ig_Date)) %>% 
  filter(Incid_Year>=2000 & Incid_Year<=2020) %>%
  st_transform(st_crs(lambert.prj))
