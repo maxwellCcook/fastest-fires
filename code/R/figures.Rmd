@@ -523,51 +523,11 @@ ggsave(f1, file = "../../figures/Figure1a_FastFires_WEST.png", dpi=300, bg="whit
        width = 8, height = 6, units = "in")
 ```
 
-```{r}
+```{r warning=F}
 library(cowplot)
 library(ggplot2)
 library(ggtext)  # For halo effect
 
-# Global min and max values for mx_grw_ha
-min_value <- min(centroid2_west$mx_grw_ha, na.rm = TRUE)
-max_value <- max(centroid2_west$mx_grw_ha, na.rm = TRUE)
-
-# Main Map
-main_map <- ggplot() + 
-   geom_sf(data = states.west, lwd = 0.6, color = "gray20", fill = "white") +
-   geom_sf(data = centroid1_west, color = "gray40", size = 0.3, show.legend = TRUE) +
-   geom_sf(data = centroid2_west, aes(color = mx_grw_ha, size = mx_grw_ha)) +
-   geom_sf(data = so_cal_bbox_sf, fill = NA, color = "red", linetype = "dashed", size = 0.8) + 
-   scale_color_viridis_c(
-       trans = "log", 
-       option = "inferno", 
-       direction = -1,
-       limits = c(min_value, max_value),  # Global limits
-       breaks = c(20000, 40000, 80000, 160000),
-       labels = c("20k", "40k", "80k", "160k")
-   ) +
-   labs(fill = "", color = "Top-100 Fastest Fires\nMaximum Single-Day Growth (ha/day)", size = "", 
-        caption = "*Grey dots represent all fast fires,\n*Colored dots represent the top 100 fastest fires (2001-2020)") + 
-   guides(
-       color = guide_colourbar(
-           direction = "vertical", barwidth = 0.8, barheight = 12, 
-           title.position = "left", title.hjust = 0.5,
-           ticks.colour = NA
-       ),
-       size = "none"
-   ) +
-   theme_void() +
-   theme(
-       plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"),
-       legend.title = element_text(size = 10, angle = 90, vjust = 0.5),
-       legend.text = element_text(size = 9),
-       legend.position = c(1.15, 0.5),
-       legend.box.just = "center",
-       plot.caption = element_text(hjust = 0, size = 10)
-   ) +
-   coord_sf(expand = FALSE)
-
-# Inset Map
 # Subset Southern California
 so_cal_bbox <- st_bbox(c(
   xmin = -1950000,
@@ -578,6 +538,70 @@ so_cal_bbox <- st_bbox(c(
 so_california <- st_crop(states.west, so_cal_bbox)
 centroid1_so_cal <- st_intersection(centroid1_west, so_california)
 centroid2_so_cal <- st_intersection(centroid2_west, so_california)
+
+# convert to acres
+centroid2_west <- centroid2_west %>%
+  mutate(mx_grw_ac = mx_grw_ha * 2.47105)
+centroid2_so_cal <- centroid2_so_cal %>%
+  mutate(mx_grw_ac = mx_grw_ha * 2.47105)
+
+# Global min and max values for mx_grw_ac
+min_value <- min(centroid2_west$mx_grw_ac, na.rm = TRUE)
+max_value <- max(centroid2_west$mx_grw_ac, na.rm = TRUE)
+
+# Main Map
+main_map <- ggplot() + 
+   geom_sf(data = states.west, lwd = 0.6, color = "gray20", fill = "white") +
+   geom_sf(data = centroid1_west, color = "gray40", size = 0.3, show.legend = TRUE) +
+   geom_sf(data = centroid2_west, aes(color = mx_grw_ac, size = mx_grw_ac)) +
+   geom_sf(data = so_cal_bbox_sf, fill = NA, color = "red", linetype = "dashed", size = 0.8) + 
+   scale_color_viridis_c(
+       trans = "log", 
+       option = "inferno", 
+       direction = -1,
+       limits = c(min_value, max_value),  # Global limits
+       breaks = c(50000, 100000, 200000, 400000),  # Adjust breaks for acres
+       labels = c("50k", "100k", "200k", "400k")
+   ) +
+   labs(fill = "", color = "Top-100 Fastest Fires\nMaximum Single-Day Growth (acres/day)", size = "", 
+        caption = "*Grey dots represent all fast fires,\n*Colored dots represent the top 100 fastest fires (2001-2020)") + 
+   guides(
+       color = guide_colourbar(
+           direction = "vertical", barwidth = 0.8, barheight = 13, 
+           title.position = "left", title.hjust = 0.5,
+           ticks.colour = NA
+       ),
+       size = "none"
+   ) +
+   theme_void() +
+   theme(
+       plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"),
+       legend.title = element_text(size = 10, angle = 90, vjust = 0.5),
+       legend.text = element_text(size = 9),
+       legend.position = c(1.18, 0.5),
+       legend.box.just = "center",
+       plot.caption = element_text(hjust = 0, size = 10)
+   ) +
+   coord_sf(expand = FALSE) +
+   ggspatial::annotation_scale(
+       location = "bl",  # Place in the bottom-left
+       width_hint = 0.15,  # Adjust size
+       pad_x = unit(0.65, "cm"),  # Shift to the left
+       pad_y = unit(0.6, "cm"),  # Shift downward
+       text_cex = 0.7
+   ) +
+   ggspatial::annotation_north_arrow(
+       location = "bl",  # Place near the scale bar
+       which_north = "true",
+       pad_x = unit(0.75, "cm"),  # Shift to align with the scale bar
+       pad_y = unit(1.0, "cm"),  # Adjust upward for separation
+       style = north_arrow_fancy_orienteering,
+       height = unit(0.6, "cm"),
+       width = unit(0.6, "cm")
+   )
+
+
+# Inset Map
 
 # City Coordinates
 city_coords <- tibble::tibble(
@@ -599,7 +623,7 @@ city_coords_transformed <- city_coords %>%
 inset_map <- ggplot() +
    geom_sf(data = so_california, fill = "white", color = "gray20", lwd = 0.6) +
    geom_sf(data = centroid1_so_cal, color = "gray40", size = 0.3) +
-   geom_sf(data = centroid2_so_cal, aes(fill = mx_grw_ha, size = mx_grw_ha), 
+   geom_sf(data = centroid2_so_cal, aes(fill = mx_grw_ac, size = mx_grw_ac), 
            shape = 21, color = alpha("black", 0.6), stroke = 0.4) +
    geom_sf(data = city_points, color = "black", size = 2.5, shape = 21, fill = "white") +
    geom_richtext(data = city_coords_transformed, 
@@ -615,8 +639,8 @@ inset_map <- ggplot() +
        option = "inferno", 
        direction = -1,
        limits = c(min_value, max_value),  # Global limits
-       breaks = c(20000, 40000, 80000, 160000),
-       labels = c("20k", "40k", "80k", "160k")
+       breaks = c(50000, 100000, 200000, 400000),  # Adjust breaks for acres
+       labels = c("50k", "100k", "200k", "400k")
    ) +
    theme_void() +
    theme(
@@ -627,15 +651,58 @@ inset_map <- ggplot() +
 
 # Combine Main and Inset Maps
 inset_map_x <- -0.03
-inset_map_y <- 0.15
+inset_map_y <- 0.44
+
+# CONUS inset map
+# Simplified CONUS and Western US boundaries
+conus_states <- states %>%
+  filter(!STUSPS %in% c("AK", "HI", "PR", "VI", "GU", "MP", "AS")) # Exclude non-CONUS states
+western_states <- conus_states %>%
+  filter(STUSPS %in% west)
+
+# Get the bounding box of the western U.S. in CONUS
+western_bbox <- st_bbox(western_states)
+western_bbox_sf <- st_as_sfc(western_bbox)
+
+# Create the new CONUS inset map
+conus_inset_map <- ggplot() +
+  geom_sf(data = conus_states, fill = "white", color = "gray20", lwd = 0.3) + # CONUS boundaries
+  geom_sf(data = western_bbox_sf, fill = NA, color = "red", linetype = "solid", size = 1) + # Western extent
+  theme_void() +
+  coord_sf(expand = FALSE)
+
+# Adjust placement for the CONUS inset
+conus_inset_map_x <- 0.032  # Place on the top-right of the main map
+conus_inset_map_y <- 0.72   # Move further up
+conus_inset_map_width <- 0.2
+conus_inset_map_height <- 0.2
+
+# combine the maps
 final_map <- ggdraw() +
-   draw_plot(main_map) +
-   draw_plot(inset_map, x = inset_map_x, y = inset_map_y, width = 0.3, height = 0.3)
+  draw_plot(main_map) +
+  draw_plot(inset_map, x = inset_map_x, y = inset_map_y - 0.3, width = inset_map_width, height = inset_map_height) + # Southern California inset
+  draw_plot(conus_inset_map, x = conus_inset_map_x, y = conus_inset_map_y, width = conus_inset_map_width, height = conus_inset_map_height) # CONUS inset
 final_map
 
 # Save Final Map
 ggsave(final_map, file = "../../figures/Figure1a_FastFires_WEST_with_Inset.png", 
        width = 9, height = 6, units = "in", bg = "white")
+```
+
+```{r}
+# get the California stats
+centroid1 <- st_centroid(fired.fast)
+centroid2 <- st_centroid(fired.t100)
+
+# join to states
+centroid1 <- centroid1 %>% st_join(states)
+centroid2 <- centroid2 %>% st_join(states)
+
+ca_ff <- centroid1 %>% filter(STUSPS == 'CA')
+ca_ff100 <- centroid2 %>% filter(STUSPS == 'CA')
+
+length(ca_ff)
+length(ca_ff100)
 ```
 
 Figure 1B-D. Case studies - selection of fast fires from the top 100 with ZTRAX point locations and daily burned area.
