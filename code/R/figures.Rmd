@@ -582,23 +582,7 @@ main_map <- ggplot() +
        legend.box.just = "center",
        plot.caption = element_text(hjust = 0, size = 10)
    ) +
-   coord_sf(expand = FALSE) +
-   ggspatial::annotation_scale(
-       location = "bl",  # Place in the bottom-left
-       width_hint = 0.15,  # Adjust size
-       pad_x = unit(0.65, "cm"),  # Shift to the left
-       pad_y = unit(0.6, "cm"),  # Shift downward
-       text_cex = 0.7
-   ) +
-   ggspatial::annotation_north_arrow(
-       location = "bl",  # Place near the scale bar
-       which_north = "true",
-       pad_x = unit(0.75, "cm"),  # Shift to align with the scale bar
-       pad_y = unit(1.0, "cm"),  # Adjust upward for separation
-       style = north_arrow_fancy_orienteering,
-       height = unit(0.6, "cm"),
-       width = unit(0.6, "cm")
-   )
+   coord_sf(expand = FALSE)
 
 
 # Inset Map
